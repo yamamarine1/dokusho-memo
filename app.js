@@ -853,9 +853,12 @@ function renderInstallBox() {
   const parts = settingsNotice ? [settingsNotice] : [];
   if (!isStandalone) {
     if (isIOS) {
+      // 下の共有欄は画面外になりやすいので、コピーボタンは案内の中に置く
       parts.push('<b>アプリとして使うには</b><ol>'
+        + (configured()
+          ? '<li><button type="button" id="copyCodeTop">設定コードをコピー</button></li>'
+          : '<li>先に下の欄で設定を済ませる</li>')
         + '<li>Safari の共有ボタン →「ホーム画面に追加」</li>'
-        + '<li>下の「設定コードをコピー」を押しておく</li>'
         + '<li>ホーム画面のアプリを開き、設定画面で「📋 貼り付け」→「保存」</li></ol>'
         + '<small>ホーム画面のアプリは Safari と設定が別になるため、もう一度貼り付けが必要です。</small>');
     } else if (installPrompt) {
@@ -927,6 +930,11 @@ $('#pasteCode').addEventListener('click', async () => {
 });
 
 $('#installBox').addEventListener('click', async (e) => {
+  if (e.target.id === 'copyCodeTop') {
+    await copyText(encodeSetup(settings), '設定コード');
+    e.target.textContent = '✓ コピーしました';
+    return;
+  }
   if (e.target.id !== 'installBtn' || !installPrompt) return;
   installPrompt.prompt();
   await installPrompt.userChoice;
