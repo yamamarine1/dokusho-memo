@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="読書メモ">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <title>読書メモ</title>
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="viewTitle">記録</h1>
+    <div class="topbar-right">
+      <span id="syncBadge" class="badge" hidden></span>
+      <button id="settingsBtn" class="icon-btn" aria-label="設定">⚙︎</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- 記録 -->
+    <section id="view-add" class="view active">
+      <form id="addForm" class="card form" autocomplete="off">
+        <label class="field">
+          <span>タイトル</span>
+          <span class="input-row">
+            <input id="fTitle" name="title" list="bookList" placeholder="本のタイトル" required enterkeyhint="next">
+            <button type="button" id="scanBtn" class="scan-btn" aria-label="バーコードで本を読み取る">📷</button>
+          </span>
+        </label>
+        <div id="recentBooks" class="chips"></div>
+        <div id="bookInfo" class="book-info-line" hidden></div>
+
+        <div class="row">
+          <label class="field">
+            <span>日付</span>
+            <input id="fDate" name="date" type="date" required>
+          </label>
+          <label class="field">
+            <span>ページ</span>
+            <input id="fPage" name="page" inputmode="numeric" placeholder="例 123" enterkeyhint="next">
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field-head">
+            メモ
+            <button type="button" id="micBtn" class="mic-btn" hidden>🎤 音声入力</button>
+          </span>
+          <textarea id="fMemo" name="memo" rows="6" placeholder="気づいたこと・引用など。キーボードのマイクでも音声入力できます"></textarea>
+        </label>
+        <p class="hint">📷 本の一文を取り込むには：メモ欄をタップ →「テキストをスキャン」</p>
+
+        <label class="field">
+          <span>タグ <small>（スペース区切り）</small></span>
+          <input id="fTags" name="tags" placeholder="例 名言 要再読" enterkeyhint="done">
+        </label>
+        <div id="recentTags" class="chips"></div>
+
+        <button type="submit" class="primary">保存</button>
+      </form>
+
+      <h2 class="section-title">最近のメモ</h2>
+      <div id="recentList" class="memo-list"></div>
+    </section>
+
+    <!-- 本棚 -->
+    <section id="view-shelf" class="view">
+      <div class="sort-toggle shelf-toggle">
+        <button data-shelf="list">リスト</button>
+        <button data-shelf="grid">表紙</button>
+      </div>
+      <div id="shelfList" class="book-list"></div>
+    </section>
+
+    <!-- 本の詳細 -->
+    <section id="view-book" class="view">
+      <button id="backBtn" class="link-btn">‹ 本棚</button>
+      <div class="book-head">
+        <img id="bookCover" class="book-cover-lg" alt="" hidden>
+        <div class="book-head-main">
+          <h2 id="bookTitle"></h2>
+          <div id="bookMeta" class="book-meta"></div>
+          <div class="book-actions">
+            <button id="bookAddBtn" class="small">＋ この本にメモ</button>
+            <button id="bookScanBtn" class="small">📷 本の情報を取得</button>
+          </div>
+        </div>
+      </div>
+      <div class="sort-toggle">
+        <button data-sort="page" class="active">ページ順</button>
+        <button data-sort="date">日付順</button>
+      </div>
+      <div id="bookMemos" class="memo-list"></div>
+    </section>
+
+    <!-- 検索 -->
+    <section id="view-search" class="view">
+      <input id="searchInput" type="search" class="search" placeholder="タイトル・メモ・タグを検索">
+      <div id="tagCloud" class="chips"></div>
+      <div id="searchResults" class="memo-list"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="add" class="active"><span>✎</span>記録</button>
+    <button data-view="shelf"><span>▤</span>本棚</button>
+    <button data-view="search"><span>⌕</span>検索</button>
+  </nav>
+
+  <datalist id="bookList"></datalist>
+
+  <!-- 編集 -->
+  <dialog id="editDialog">
+    <form id="editForm" class="form" method="dialog" autocomplete="off">
+      <h2>メモを編集</h2>
+      <label class="field"><span>タイトル</span><input name="title" list="bookList" required></label>
+      <div class="row">
+        <label class="field"><span>日付</span><input name="date" type="date" required></label>
+        <label class="field"><span>ページ</span><input name="page" inputmode="numeric"></label>
+      </div>
+      <label class="field"><span>メモ</span><textarea name="memo" rows="7"></textarea></label>
+      <label class="field"><span>タグ</span><input name="tags"></label>
+      <div class="dialog-actions">
+        <button type="button" id="deleteBtn" class="danger">削除</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancelEdit">キャンセル</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 設定 -->
+  <dialog id="settingsDialog">
+    <form id="settingsForm" class="form" method="dialog" autocomplete="off">
+      <h2>設定</h2>
+
+      <div id="installBox" class="notice" hidden></div>
+
+      <label class="field"><span>設定コード（ほかの端末からコピーしたもの）</span>
+        <span class="input-row">
+          <input id="setupCode" placeholder="DM1-…">
+          <button type="button" id="pasteCode">📋 貼り付け</button>
+        </span>
+      </label>
+
+      <details id="manualBox">
+        <summary>URL と合言葉を直接入力する</summary>
+        <label class="field"><span>API の URL（Apps Script のウェブアプリURL）</span>
+          <input name="api" type="url" placeholder="https://script.google.com/macros/s/.../exec"></label>
+        <label class="field"><span>合言葉</span>
+          <input name="token"></label>
+      </details>
+
+      <p class="hint">設定はこの端末にだけ保存されます。</p>
+      <div class="dialog-actions">
+        <button type="button" id="testBtn">接続テスト</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancelSettings">閉じる</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+      <p id="testResult" class="hint"></p>
+
+      <section id="shareBox" class="share-box" hidden>
+        <h3>ほかの端末を設定する</h3>
+        <p class="hint">iPhone のカメラでこの QR コードを読むか、下のコードをコピーして送ってください。合言葉が含まれるので、人には見せないでください。</p>
+        <div class="share-row">
+          <div id="qrBox" class="qr-box"></div>
+          <div class="share-actions">
+            <button type="button" id="copyCode">設定コードをコピー</button>
+            <button type="button" id="copyLink">設定リンクをコピー</button>
+          </div>
+        </div>
+      </section>
+    </form>
+  </dialog>
+
+  <!-- バーコード読み取り -->
+  <dialog id="scanDialog" class="scan-dialog">
+    <div class="form">
+      <h2>バーコードを読み取る</h2>
+      <p class="hint">裏表紙の上段のバーコード（978 で始まる方）を枠に合わせてください</p>
+      <div class="scan-view">
+        <video id="scanVideo" playsinline muted autoplay></video>
+        <div class="scan-frame"></div>
+      </div>
+      <p id="scanStatus" class="hint"></p>
+      <div class="input-row">
+        <input id="isbnInput" inputmode="numeric" placeholder="ISBN を手入力（13桁）" maxlength="17">
+        <button type="button" id="isbnGo">検索</button>
+      </div>
+      <div class="dialog-actions">
+        <label class="photo-btn">写真から読み取る
+          <input id="scanPhoto" type="file" accept="image/*" capture="environment" hidden>
+        </label>
+        <span class="spacer"></span>
+        <button type="button" id="scanCancel">キャンセル</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
