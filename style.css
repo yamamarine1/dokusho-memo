@@ -262,3 +262,4 @@ details .field { margin-bottom: 8px; }
 .share-actions { display: flex; flex-direction: column; gap: 8px; }
 button:disabled { opacity: .55; cursor: default; }
 #copyCodeTop { background: var(--accent); color: var(--accent-ink); font-weight: 600; margin: 2px 0; }
+.mic-hint { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-size: 14px; }

@@ -25,6 +25,9 @@ let searchTag = '';
 
 const $ = (sel) => document.querySelector(sel);
 const configured = () => Boolean(settings.api && settings.token);
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS は Mac として名乗る
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 // ---------- ユーティリティ ----------
 function today() {
@@ -447,15 +450,27 @@ $('#recentTags').addEventListener('click', (e) => {
   renderAddView();
 });
 
-// ---------- 音声入力（Safari の音声認識。使えない環境ではボタンを出さない） ----------
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+// ---------- 音声入力 ----------
+// iPhone / iPad のホーム画面アプリではブラウザの音声認識が固まることがあるため、
+// iOS ではキーボードの音声入力（マイクキー）に誘導する。パソコンではブラウザの音声認識を使う。
+const SR = isIOS ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
 let rec = null;
 
 function stopMic() {
   if (rec) rec.stop();
 }
 
-if (SR) {
+if (isIOS) {
+  const btn = $('#micBtn');
+  btn.hidden = false;
+  btn.addEventListener('click', () => {
+    const area = $('#fMemo');
+    area.focus();
+    area.setSelectionRange(area.value.length, area.value.length);
+    $('#micHint').hidden = false; // トーストはキーボードに隠れるので、メモ欄の下に案内を出す
+  });
+  $('#fMemo').addEventListener('blur', () => { $('#micHint').hidden = true; });
+} else if (SR) {
   const btn = $('#micBtn');
   btn.hidden = false;
   btn.addEventListener('click', () => {
@@ -795,9 +810,6 @@ $('#cancelEdit').addEventListener('click', () => editDialog.close());
 const settingsDialog = $('#settingsDialog');
 const settingsForm = $('#settingsForm');
 
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS は Mac として名乗る
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 let installPrompt = null;
 
 // 設定コード：URL と合言葉を 1 つの文字列にまとめたもの（DM1-<base64url>）。設定リンクにも埋め込む
