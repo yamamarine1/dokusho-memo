@@ -547,56 +547,111 @@ function makeReader() {
 const scanDialog = $('#scanDialog');
 let scanReader = null;
 let scanResolve = null;
+let scanPick = null;  // 読み取って確認中の本 { isbn, found }
+let scanSeq = 0;      // 読み直したあとに古い検索結果を表示しないための番号
 
 function stopCamera() {
   if (scanReader) { scanReader.reset(); scanReader = null; }
 }
 
-function finishScan(isbn) {
+function finishScan(result) {
   const resolve = scanResolve;
   scanResolve = null;
+  scanSeq++;
   stopCamera();
   if (scanDialog.open) scanDialog.close();
-  if (resolve) resolve(isbn);
+  if (resolve) resolve(result);
+}
+
+function startCamera() {
+  $('#scanStatus').textContent = 'カメラを起動しています…';
+  loadZXing()
+    .then(() => {
+      if (!scanResolve || scanPick) return null;
+      const reader = makeReader();
+      scanReader = reader;
+      return reader.decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' } } },
+        $('#scanVideo'),
+        (result) => { if (result && scanReader === reader && !scanPick) acceptCode(result.getText()); },
+      ).then(() => {
+        if (scanReader !== reader) reader.reset(); // 起動中にキャンセル・読み取りされた
+        else $('#scanStatus').textContent = 'バーコードを枠に合わせてください';
+      });
+    })
+    .catch(() => {
+      $('#scanStatus').textContent = 'カメラを使えません。写真から読み取るか、ISBN を手入力してください';
+    });
 }
 
 function acceptCode(code) {
-  if (isValidIsbn13(code)) { finishScan(code); return true; }
+  if (isValidIsbn13(code)) { showScanned(code); return true; }
   $('#scanStatus').textContent = /^19[12]/.test(code)
     ? 'それは下段のバーコードです。上段（978 で始まる方）を読み取ってください'
     : 'ISBN として読み取れませんでした';
   return false;
 }
 
-// 本を探して返す：ISBN の文字列／題名検索で選んだ ISBN なしの本 { book }／キャンセル時は null
+// 読み取れたことをはっきり示し、本の情報を確かめてから「この本で記録」で決定する
+async function showScanned(isbn) {
+  const seq = ++scanSeq;
+  stopCamera();
+  scanPick = { isbn, found: null };
+  $('.scan-view').classList.add('ok');
+  $('#scanStatus').textContent = `✓ 読み取りました（ISBN ${isbn}）`;
+  const card = $('#scanResult');
+  card.hidden = false;
+  $('#scanResultBody').innerHTML = '<span class="hit-cover"></span><span class="hit-main">'
+    + `<span class="hit-title">本の情報を検索しています…</span><span class="hit-sub">ISBN ${isbn}</span></span>`;
+  $('#scanConfirm').disabled = true;
+  card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  const known = Object.values(bookInfo).find((b) => b.isbn === isbn);
+  const found = await lookupBook(isbn);
+  if (seq !== scanSeq) return;
+  scanPick.found = found;
+  let html;
+  if (found.book) {
+    const b = found.book;
+    const sub = [b.author, b.publisher, b.pages && `全${b.pages}ページ`].filter(Boolean).join(' ／ ');
+    html = (b.cover ? `<img class="hit-cover" src="${esc(b.cover)}" alt="" referrerpolicy="no-referrer">` : '<span class="hit-cover"></span>')
+      + `<span class="hit-main"><span class="hit-title">${esc(known ? known.title : b.title)}</span>`
+      + `<span class="hit-sub">${esc(sub)}</span></span>`;
+  } else if (found.notFound) {
+    html = '<span class="hit-cover"></span><span class="hit-main">'
+      + `<span class="hit-title">${known ? esc(known.title) : 'まだ登録されていない本です'}</span>`
+      + `<span class="hit-sub">ISBN ${isbn}${known ? '' : '（決定するとタイトルを入力できます。本の情報は後日自動で取得します）'}</span></span>`;
+  } else {
+    html = '<span class="hit-cover"></span><span class="hit-main"><span class="hit-title">本の情報を検索できませんでした</span>'
+      + `<span class="hit-sub">${esc(found.error)}。通信を確認して「読み直す」を押してください</span></span>`;
+  }
+  $('#scanResultBody').innerHTML = html;
+  $('#scanConfirm').disabled = !!found.error;
+}
+
+function clearScanned() {
+  scanSeq++;
+  scanPick = null;
+  $('#scanResult').hidden = true;
+  $('.scan-view').classList.remove('ok');
+}
+
+$('#scanConfirm').addEventListener('click', () => { if (scanPick && scanPick.found) finishScan(scanPick); });
+$('#scanRetry').addEventListener('click', () => { clearScanned(); startCamera(); });
+
+// 本を探して返す：{ isbn, found }（found がなければ呼び出し側で検索）／ISBN なしの本 { book }／キャンセル時は null
 function scanIsbn() {
   return new Promise((resolve) => {
     scanResolve = resolve;
+    clearScanned();
     $('#isbnInput').value = '';
     $('#titleQuery').value = '';
     $('#findStatus').textContent = '';
     $('#ocrLines').innerHTML = '';
     $('#findResults').innerHTML = '';
     findHits = [];
-    $('#scanStatus').textContent = 'カメラを起動しています…';
     scanDialog.showModal();
-    loadZXing()
-      .then(() => {
-        if (!scanResolve) return null;
-        const reader = makeReader();
-        scanReader = reader;
-        return reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: 'environment' } } },
-          $('#scanVideo'),
-          (result) => { if (result) acceptCode(result.getText()); },
-        ).then(() => {
-          if (scanReader !== reader) reader.reset(); // 起動中にキャンセルされた
-          else $('#scanStatus').textContent = 'バーコードを枠に合わせてください';
-        });
-      })
-      .catch(() => {
-        $('#scanStatus').textContent = 'カメラを使えません。写真から読み取るか、ISBN を手入力してください';
-      });
+    startCamera();
   });
 }
 
@@ -613,6 +668,7 @@ $('#scanPhoto').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!file) return;
   stopCamera();
+  clearScanned();
   $('#scanStatus').textContent = '写真を解析しています…';
   const url = URL.createObjectURL(file);
   try {
@@ -686,7 +742,7 @@ $('#findResults').addEventListener('click', (e) => {
   const b = findHits[Number(el.dataset.i)];
   if (!b) return;
   // ISBN があれば通常の検索に回して表紙なども確認する。なければ候補の情報をそのまま使う
-  if (b.isbn && isValidIsbn13(b.isbn)) finishScan(b.isbn);
+  if (b.isbn && isValidIsbn13(b.isbn)) finishScan({ isbn: b.isbn });
   else finishScan({ book: { title: b.title, author: b.author, publisher: b.publisher, pages: b.pages, isbn: '', cover: '', pending: '' } });
 });
 
@@ -728,7 +784,7 @@ $('#scanShot').addEventListener('change', async (e) => {
     const res = await api('ocr', { image });
     if (seq !== findSeq) return;
     if (!res.ok) throw new Error(res.error);
-    if (res.isbn) { finishScan(res.isbn); return; } // 奥付などに ISBN が写っていた
+    if (res.isbn) { showScanned(res.isbn); return; } // 奥付などに ISBN が写っていた
     $('#ocrLines').innerHTML = res.lines.map((l) => `<button type="button" class="chip" data-q="${esc(l)}">${esc(l)}</button>`).join('');
     if (res.query) $('#titleQuery').value = res.query;
     renderHits(res.results || []);
@@ -753,31 +809,32 @@ function checkCover(url) {
   });
 }
 
-// 戻り値：{ book } 見つかった ／ { notFound: true } 未登録 ／ null 通信エラーなど
+// 戻り値：{ book } 見つかった ／ { notFound: true } 未登録 ／ { error } 通信エラーなど
 async function lookupBook(isbn) {
-  if (!configured() || !navigator.onLine) { toast('本の検索には通信が必要です'); return null; }
-  toast('本の情報を検索しています…');
+  if (!configured() || !navigator.onLine) return { error: '本の検索には通信と設定（⚙︎）が必要です' };
   try {
     const res = await api('lookup', { isbn });
-    if (!res.ok) {
-      if (res.notFound) return { notFound: true };
-      toast(res.error);
-      return null;
-    }
+    if (!res.ok) return res.notFound ? { notFound: true } : { error: res.error || '検索できませんでした' };
     const book = { ...res.book, pending: '' };
     book.cover = await checkCover(book.cover);
     return { book };
   } catch {
-    toast('検索できませんでした');
-    return null;
+    return { error: '検索できませんでした' };
   }
+}
+
+// 題名検索の候補（ISBN あり）を選んだときは、ここで本の情報を確かめる
+async function resolvePick(picked) {
+  if (picked.found) return picked.found;
+  toast('本の情報を検索しています…');
+  return lookupBook(picked.isbn);
 }
 
 // 記録画面の 📷：読み取った本をタイトルに入れる
 $('#scanBtn').addEventListener('click', async () => {
   const picked = await scanIsbn();
   if (!picked) return;
-  if (typeof picked === 'object') { // 題名検索で選んだ ISBN なしの本（電子書籍など）
+  if (picked.book) { // 題名検索で選んだ ISBN なしの本（電子書籍など）
     const known = bookInfo[picked.book.title];
     if (!known) enqueue('saveBook', { book: picked.book });
     $('#fTitle').value = picked.book.title;
@@ -787,7 +844,7 @@ $('#scanBtn').addEventListener('click', async () => {
     renderAddView();
     return;
   }
-  const isbn = picked;
+  const { isbn } = picked;
   // 同じ本を登録済みなら、そのタイトル（自分で直した名前かもしれない）を使う
   const known = Object.values(bookInfo).find((b) => b.isbn === isbn);
   // 検索中に保存されると前の本にメモが付いてしまうので、保存ボタンを止めておく
@@ -796,12 +853,12 @@ $('#scanBtn').addEventListener('click', async () => {
   saveBtn.textContent = '本を検索中…';
   let found;
   try {
-    found = await lookupBook(isbn);
+    found = await resolvePick(picked);
   } finally {
     saveBtn.disabled = false;
     saveBtn.textContent = '保存';
   }
-  if (!found) return;
+  if (found.error) { toast(found.error); return; }
 
   if (found.notFound) {
     if (known) {
@@ -829,15 +886,15 @@ $('#bookScanBtn').addEventListener('click', async () => {
   const title = currentBook;
   const picked = await scanIsbn();
   if (!picked) return;
-  if (typeof picked === 'object') {
+  if (picked.book) {
     const filled = Object.fromEntries(Object.entries(picked.book).filter(([, v]) => v)); // 空の項目で既存の情報を消さない
     enqueue('saveBook', { book: { ...(bookInfo[title] || {}), ...filled, title } });
     toast(`本の情報を取得しました（${picked.book.title}）`);
     return;
   }
-  const isbn = picked;
-  const found = await lookupBook(isbn);
-  if (!found) return;
+  const { isbn } = picked;
+  const found = await resolvePick(picked);
+  if (found.error) { toast(found.error); return; }
   if (found.notFound) {
     enqueue('saveBook', { book: { ...(bookInfo[title] || {}), title, isbn, pending: 'true' } });
     toast('まだ登録されていない本です。ISBN を保存し、登録され次第自動で情報を取得します');

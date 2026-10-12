@@ -187,6 +187,16 @@
     <div class="form">
       <h2>本を探す</h2>
 
+      <div id="scanResult" class="scan-result" hidden>
+        <div class="scan-result-head">✓ 読み取りました</div>
+        <div id="scanResultBody" class="hit"></div>
+        <div class="dialog-actions">
+          <button type="button" id="scanRetry">読み直す</button>
+          <span class="spacer"></span>
+          <button type="button" id="scanConfirm" class="primary">この本で記録</button>
+        </div>
+      </div>
+
       <div class="find-box">
         <div class="input-row">
           <input id="titleQuery" type="search" placeholder="題名で探す（電子書籍など）" enterkeyhint="search">

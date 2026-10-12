@@ -8,6 +8,8 @@
   --accent-ink: #ffffff;
   --chip: #efe7d8;
   --danger: #c0392b;
+  --ok: #2e8b57;
+  --ok-bg: #eaf6ee;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 }
@@ -22,6 +24,8 @@
     --accent-ink: #1c1a17;
     --chip: #34302a;
     --danger: #e06c5e;
+    --ok: #5cc98a;
+    --ok-bg: #1f2e25;
   }
 }
 
@@ -241,6 +245,23 @@ dialog h2 { margin: 0 0 4px; font-size: 18px; }
 .hit-title { font-weight: 600; font-size: 15px; }
 .hit-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hit-tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); margin-left: 4px; vertical-align: 1px; }
+
+/* バーコードを読み取れたときの表示 */
+.scan-result {
+  border: 2px solid var(--ok); border-radius: 12px; padding: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--ok-bg); animation: pop .25s ease-out;
+}
+.scan-result-head { font-weight: 700; color: var(--ok); font-size: 16px; }
+.scan-result .hit { cursor: default; }
+.scan-result .hit-cover { width: 56px; height: 80px; }
+.scan-result .hit-sub { white-space: normal; }
+.scan-view.ok .scan-frame { border-color: var(--ok); box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55), 0 0 18px var(--ok); }
+.scan-view.ok::after {
+  content: "\2713"; position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 72px; font-weight: 700; color: #fff; text-shadow: 0 0 12px var(--ok);
+}
+@keyframes pop { from { transform: scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---------- 本棚：表紙グリッド ---------- */
 .shelf-toggle { justify-content: flex-end; }
