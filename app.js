@@ -520,6 +520,44 @@ function loadZXing() {
   return zxingLoading;
 }
 
+// 読み取りは zxing-cpp（WebAssembly 版。ピンぼけに強い）と ZXing（JavaScript 版。細いバーコードに強いことがある）の両方で試す。
+// WebAssembly 版を読み込めない端末では JavaScript 版だけを使う
+let wasmReady = null;
+function loadWasmReader() {
+  if (!wasmReady) {
+    wasmReady = loadScript('vendor/zxing-wasm-reader-3.1.4.js')
+      .then(() => ZXingWASM.getZXingModule({
+        locateFile: (path, prefix) => (path.endsWith('.wasm')
+          ? new URL('vendor/zxing_reader-3.1.4.wasm', location.href).href
+          : prefix + path),
+      }))
+      .then(() => true)
+      .catch(() => false);
+  }
+  return wasmReady;
+}
+
+const WASM_OPTIONS = { formats: ['EAN13'], tryHarder: true, tryRotate: true, tryInvert: false, maxNumberOfSymbols: 2 };
+let useWasm = false;
+
+async function loadScanner() {
+  const [wasm] = await Promise.all([loadWasmReader(), loadZXing()]);
+  useWasm = wasm;
+}
+
+// キャンバスに描いた画像から ISBN を探す。上段（978/979）と下段（192）が両方写っていたら上段を返す
+async function readCanvas(ctx, reader) {
+  if (useWasm) {
+    const img = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const results = await ZXingWASM.readBarcodes(img, WASM_OPTIONS);
+    const hit = results.find((r) => /^97[89]/.test(r.text)) || results[0];
+    if (hit && /^97[89]/.test(hit.text)) return hit.text;
+    const js = decodeCanvas(reader, ctx.canvas);
+    return js || (hit ? hit.text : null);
+  }
+  return decodeCanvas(reader, ctx.canvas);
+}
+
 function isValidIsbn13(code) {
   if (!/^97[89]\d{10}$/.test(code)) return false;
   const sum = [...code.slice(0, 12)].reduce((s, d, i) => s + Number(d) * (i % 2 ? 3 : 1), 0);
@@ -537,21 +575,47 @@ function toIsbn13(text) {
   return body + ((10 - (sum % 10)) % 10);
 }
 
-function makeReader() {
+function makeDecoder() {
   const hints = new Map();
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13]);
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  return new ZXing.BrowserMultiFormatReader(hints, 300);
+  const reader = new ZXing.MultiFormatReader();
+  reader.setHints(hints);
+  return reader;
+}
+
+// キャンバスの画像からバーコードを探す。明暗の判定方法を 2 通り試す（照明やピントの甘さに強くするため）
+function decodeCanvas(reader, canvas) {
+  const source = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+  for (const Binarizer of [ZXing.HybridBinarizer, ZXing.GlobalHistogramBinarizer]) {
+    try {
+      return reader.decodeWithState(new ZXing.BinaryBitmap(new Binarizer(source))).getText();
+    } catch { /* 見つからない */ }
+  }
+  return null;
+}
+
+// 画像（または映像の 1 コマ）の一部を切り出し、長い辺を maxSide 以下にしてキャンバスに描く
+function drawRegion(ctx, src, sw, sh, crop, maxSide) {
+  const cw = sw * crop.w;
+  const ch = sh * crop.h;
+  const scale = Math.min(1, maxSide / Math.max(cw, ch));
+  ctx.canvas.width = Math.max(1, Math.round(cw * scale));
+  ctx.canvas.height = Math.max(1, Math.round(ch * scale));
+  ctx.drawImage(src, (sw - cw) / 2, (sh - ch) / 2, cw, ch, 0, 0, ctx.canvas.width, ctx.canvas.height);
 }
 
 const scanDialog = $('#scanDialog');
-let scanReader = null;
+let scanStream = null;
+let scanLoop = 0;     // カメラを止めたら番号を進めて、読み取りの繰り返しを終わらせる
 let scanResolve = null;
 let scanPick = null;  // 読み取って確認中の本 { isbn, found }
 let scanSeq = 0;      // 読み直したあとに古い検索結果を表示しないための番号
 
 function stopCamera() {
-  if (scanReader) { scanReader.reset(); scanReader = null; }
+  scanLoop++;
+  if (scanStream) { scanStream.getTracks().forEach((t) => t.stop()); scanStream = null; }
+  $('#scanVideo').srcObject = null;
 }
 
 function finishScan(result) {
@@ -563,25 +627,60 @@ function finishScan(result) {
   if (resolve) resolve(result);
 }
 
-function startCamera() {
+// 対応している端末では、ピントを合わせ続ける設定と 2 倍ズームにする（近づけすぎてぼやけるのを防ぐ）
+function tuneTrack(track) {
+  try {
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    const adv = {};
+    if (caps.focusMode && caps.focusMode.includes('continuous')) adv.focusMode = 'continuous';
+    if (caps.zoom && caps.zoom.max >= 1.5) adv.zoom = Math.min(2, caps.zoom.max);
+    if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(() => {});
+  } catch { /* 設定できない端末はそのまま */ }
+}
+
+async function startCamera() {
+  const loop = ++scanLoop;
   $('#scanStatus').textContent = 'カメラを起動しています…';
-  loadZXing()
-    .then(() => {
-      if (!scanResolve || scanPick) return null;
-      const reader = makeReader();
-      scanReader = reader;
-      return reader.decodeFromConstraints(
-        { video: { facingMode: { ideal: 'environment' } } },
-        $('#scanVideo'),
-        (result) => { if (result && scanReader === reader && !scanPick) acceptCode(result.getText()); },
-      ).then(() => {
-        if (scanReader !== reader) reader.reset(); // 起動中にキャンセル・読み取りされた
-        else $('#scanStatus').textContent = 'バーコードを枠に合わせてください';
-      });
-    })
-    .catch(() => {
-      $('#scanStatus').textContent = 'カメラを使えません。写真から読み取るか、ISBN を手入力してください';
+  let stream;
+  try {
+    await loadScanner();
+    if (loop !== scanLoop || !scanResolve || scanPick) return;
+    // 細いバーコードの線がつぶれないよう、高い解像度で開く
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
     });
+  } catch {
+    if (loop === scanLoop) $('#scanStatus').textContent = 'カメラを使えません。写真から読み取るか、ISBN を手入力してください';
+    return;
+  }
+  if (loop !== scanLoop) { stream.getTracks().forEach((t) => t.stop()); return; } // 起動中にキャンセルされた
+  scanStream = stream;
+  tuneTrack(stream.getVideoTracks()[0]);
+  const video = $('#scanVideo');
+  video.srcObject = stream;
+  try { await video.play(); } catch { /* autoplay 属性で再生される */ }
+  if (loop !== scanLoop) return;
+  $('#scanStatus').textContent = 'バーコードを枠に合わせてください（近すぎるとぼやけます。15〜20cm 離して）';
+
+  const reader = makeDecoder();
+  const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  // 枠のあたり（中央の横長の帯）は縮小せずに、広めの範囲は縮小して、交互に読む
+  const crops = [[{ w: 0.9, h: 0.3 }, 2000], [{ w: 1, h: 0.7 }, 1280]];
+  let n = 0;
+  const tick = async () => {
+    if (loop !== scanLoop) return;
+    if (video.readyState >= 2 && video.videoWidth) {
+      const [crop, maxSide] = crops[n++ % crops.length];
+      drawRegion(ctx, video, video.videoWidth, video.videoHeight, crop, maxSide);
+      let text = null;
+      try { text = await readCanvas(ctx, reader); } catch { /* 次のコマで再挑戦 */ }
+      if (loop !== scanLoop) return;
+      if (text && acceptCode(text)) return;
+    }
+    setTimeout(tick, 60);
+  };
+  tick();
 }
 
 function acceptCode(code) {
@@ -672,11 +771,27 @@ $('#scanPhoto').addEventListener('change', async (e) => {
   $('#scanStatus').textContent = '写真を解析しています…';
   const url = URL.createObjectURL(file);
   try {
-    await loadZXing();
-    const result = await makeReader().decodeFromImageUrl(url);
-    acceptCode(result.getText());
+    await loadScanner();
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = url;
+    });
+    // 写真全体・中央部分を、いくつかの大きさで試す
+    const reader = makeDecoder();
+    const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    const tries = [[{ w: 1, h: 1 }, 1600], [{ w: 0.7, h: 0.5 }, 1600], [{ w: 1, h: 1 }, 2400], [{ w: 1, h: 1 }, 1000], [{ w: 0.5, h: 0.3 }, 1200]];
+    let text = null;
+    for (const [crop, size] of tries) {
+      drawRegion(ctx, img, img.naturalWidth, img.naturalHeight, crop, size);
+      text = await readCanvas(ctx, reader);
+      if (text) break;
+    }
+    if (!text) throw new Error('not found');
+    acceptCode(text);
   } catch {
-    $('#scanStatus').textContent = '読み取れませんでした。バーコードを大きく、まっすぐ撮ってください';
+    $('#scanStatus').textContent = '読み取れませんでした。バーコードが画面の中央に大きく写るよう、少し離してまっすぐ撮ってください';
   } finally {
     URL.revokeObjectURL(url);
   }

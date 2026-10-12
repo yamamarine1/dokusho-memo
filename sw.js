@@ -1,6 +1,6 @@
 // オフラインでもアプリを開けるよう、画面のファイルだけをキャッシュする。
 // ファイルを更新したら VERSION を上げること。
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = `dokusho-memo-${VERSION}`;
 const SHELL = [
   './',
@@ -13,6 +13,8 @@ const SHELL = [
   'icons/icon-512.png',
   'vendor/zxing-library-0.21.3.min.js',
   'vendor/qrcode-generator-1.4.4.js',
+  'vendor/zxing-wasm-reader-3.1.4.js',
+  'vendor/zxing_reader-3.1.4.wasm',
 ];
 
 self.addEventListener('install', (e) => {
