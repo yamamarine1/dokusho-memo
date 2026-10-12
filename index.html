@@ -185,7 +185,22 @@
   <!-- バーコード読み取り -->
   <dialog id="scanDialog" class="scan-dialog">
     <div class="form">
-      <h2>バーコードを読み取る</h2>
+      <h2>本を探す</h2>
+
+      <div class="find-box">
+        <div class="input-row">
+          <input id="titleQuery" type="search" placeholder="題名で探す（電子書籍など）" enterkeyhint="search">
+          <button type="button" id="titleGo">検索</button>
+        </div>
+        <label class="photo-btn shot-btn">🖼 スクリーンショットから探す
+          <input id="scanShot" type="file" accept="image/*" hidden>
+        </label>
+        <p id="findStatus" class="hint"></p>
+        <div id="ocrLines" class="chips"></div>
+        <div id="findResults" class="find-results"></div>
+      </div>
+
+      <h3 class="scan-sub">紙の本はバーコードで</h3>
       <p class="hint">裏表紙の上段のバーコード（978 で始まる方）を枠に合わせてください</p>
       <div class="scan-view">
         <video id="scanVideo" playsinline muted autoplay></video>

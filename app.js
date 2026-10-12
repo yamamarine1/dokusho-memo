@@ -568,11 +568,16 @@ function acceptCode(code) {
   return false;
 }
 
-// ISBN を読み取って返す（キャンセル時は null）
+// 本を探して返す：ISBN の文字列／題名検索で選んだ ISBN なしの本 { book }／キャンセル時は null
 function scanIsbn() {
   return new Promise((resolve) => {
     scanResolve = resolve;
     $('#isbnInput').value = '';
+    $('#titleQuery').value = '';
+    $('#findStatus').textContent = '';
+    $('#ocrLines').innerHTML = '';
+    $('#findResults').innerHTML = '';
+    findHits = [];
     $('#scanStatus').textContent = 'カメラを起動しています…';
     scanDialog.showModal();
     loadZXing()
@@ -621,6 +626,120 @@ $('#scanPhoto').addEventListener('change', async (e) => {
   }
 });
 
+// ---------- 題名・スクリーンショットで探す（バーコードのない電子書籍など） ----------
+let findHits = [];
+let findSeq = 0; // 古い検索結果で上書きしないための番号
+
+function canSearch() {
+  if (configured() && navigator.onLine) return true;
+  $('#findStatus').textContent = '検索には通信と設定（⚙︎）が必要です';
+  return false;
+}
+
+function renderHits(hits) {
+  findHits = hits;
+  $('#findResults').innerHTML = hits.map((b, i) => {
+    const sub = [b.author, b.publisher && b.publisher.slice(0, 20), b.year].filter(Boolean).join(' ／ ');
+    const cover = b.isbn
+      ? `<img class="hit-cover" src="https://www.hanmoto.com/bd/img/${b.isbn}.jpg" alt="" referrerpolicy="no-referrer" loading="lazy">`
+      : '<span class="hit-cover"></span>';
+    return `<button type="button" class="hit" data-i="${i}">${cover}<span class="hit-main">`
+      + `<span class="hit-title">${esc(b.title)}${b.ebook ? '<span class="hit-tag">電子</span>' : ''}</span>`
+      + `<span class="hit-sub">${esc(sub)}</span></span></button>`;
+  }).join('');
+  // 表紙が未登録の本は小さな代替画像が返るので消す
+  $('#findResults').querySelectorAll('img.hit-cover').forEach((img) => {
+    const hide = () => { img.style.visibility = 'hidden'; };
+    img.addEventListener('error', hide);
+    img.addEventListener('load', () => { if (img.naturalWidth < 100) hide(); });
+  });
+}
+
+async function findByTitle(q) {
+  q = q.trim();
+  if (!q || !canSearch()) return;
+  stopCamera();
+  const seq = ++findSeq;
+  $('#titleQuery').value = q;
+  $('#findStatus').textContent = `「${q}」を検索しています…`;
+  try {
+    const res = await api('search', { q });
+    if (seq !== findSeq) return;
+    if (!res.ok) throw new Error(res.error);
+    renderHits(res.results);
+    $('#findStatus').textContent = res.results.length
+      ? '該当する本をタップしてください'
+      : '見つかりませんでした。題名を短くするか、著者名を足して試してください';
+  } catch (err) {
+    if (seq === findSeq) $('#findStatus').textContent = '検索できませんでした';
+  }
+}
+
+$('#titleGo').addEventListener('click', () => findByTitle($('#titleQuery').value));
+$('#titleQuery').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); findByTitle(e.target.value); }
+});
+
+$('#findResults').addEventListener('click', (e) => {
+  const el = e.target.closest('.hit');
+  if (!el) return;
+  const b = findHits[Number(el.dataset.i)];
+  if (!b) return;
+  // ISBN があれば通常の検索に回して表紙なども確認する。なければ候補の情報をそのまま使う
+  if (b.isbn && isValidIsbn13(b.isbn)) finishScan(b.isbn);
+  else finishScan({ book: { title: b.title, author: b.author, publisher: b.publisher, pages: b.pages, isbn: '', cover: '', pending: '' } });
+});
+
+$('#ocrLines').addEventListener('click', (e) => {
+  const el = e.target.closest('.chip');
+  if (el) findByTitle(el.dataset.q);
+});
+
+// 画像を縮小して JPEG の base64 にする（送信量を減らし、OCR も速くなる）
+function imageToJpegBase64(file, maxSide = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像を開けませんでした')); };
+    img.src = url;
+  });
+}
+
+$('#scanShot').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file || !canSearch()) return;
+  stopCamera();
+  const seq = ++findSeq;
+  $('#ocrLines').innerHTML = '';
+  $('#findResults').innerHTML = '';
+  $('#findStatus').textContent = '画像の文字を読み取っています…（10秒ほど）';
+  try {
+    const image = await imageToJpegBase64(file);
+    const res = await api('ocr', { image });
+    if (seq !== findSeq) return;
+    if (!res.ok) throw new Error(res.error);
+    if (res.isbn) { finishScan(res.isbn); return; } // 奥付などに ISBN が写っていた
+    $('#ocrLines').innerHTML = res.lines.map((l) => `<button type="button" class="chip" data-q="${esc(l)}">${esc(l)}</button>`).join('');
+    if (res.query) $('#titleQuery').value = res.query;
+    renderHits(res.results || []);
+    $('#findStatus').textContent = res.results && res.results.length
+      ? `「${res.query}」で見つかった本です。違うときは、題名の行をタップしてください`
+      : (res.lines.length ? '題名の行をタップして検索してください' : '文字を読み取れませんでした。題名がはっきり写った画面で試してください');
+  } catch (err) {
+    if (seq === findSeq) $('#findStatus').textContent = '読み取れませんでした（' + (err.message || err) + '）';
+  }
+});
+
 // 表紙画像があるか確認（未登録の本は小さな代替画像が返るので除外）
 function checkCover(url) {
   return new Promise((resolve) => {
@@ -656,8 +775,19 @@ async function lookupBook(isbn) {
 
 // 記録画面の 📷：読み取った本をタイトルに入れる
 $('#scanBtn').addEventListener('click', async () => {
-  const isbn = await scanIsbn();
-  if (!isbn) return;
+  const picked = await scanIsbn();
+  if (!picked) return;
+  if (typeof picked === 'object') { // 題名検索で選んだ ISBN なしの本（電子書籍など）
+    const known = bookInfo[picked.book.title];
+    if (!known) enqueue('saveBook', { book: picked.book });
+    $('#fTitle').value = picked.book.title;
+    pendingIsbn = '';
+    toast(`『${picked.book.title}』を選びました`);
+    saveDraft();
+    renderAddView();
+    return;
+  }
+  const isbn = picked;
   // 同じ本を登録済みなら、そのタイトル（自分で直した名前かもしれない）を使う
   const known = Object.values(bookInfo).find((b) => b.isbn === isbn);
   // 検索中に保存されると前の本にメモが付いてしまうので、保存ボタンを止めておく
@@ -697,8 +827,15 @@ $('#scanBtn').addEventListener('click', async () => {
 // 本の詳細の 📷：既存の本に情報を付ける（タイトルはそのまま）
 $('#bookScanBtn').addEventListener('click', async () => {
   const title = currentBook;
-  const isbn = await scanIsbn();
-  if (!isbn) return;
+  const picked = await scanIsbn();
+  if (!picked) return;
+  if (typeof picked === 'object') {
+    const filled = Object.fromEntries(Object.entries(picked.book).filter(([, v]) => v)); // 空の項目で既存の情報を消さない
+    enqueue('saveBook', { book: { ...(bookInfo[title] || {}), ...filled, title } });
+    toast(`本の情報を取得しました（${picked.book.title}）`);
+    return;
+  }
+  const isbn = picked;
   const found = await lookupBook(isbn);
   if (!found) return;
   if (found.notFound) {
