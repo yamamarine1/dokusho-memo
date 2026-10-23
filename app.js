@@ -14,8 +14,9 @@ const LS = {
 let settings = LS.get('dm.settings', { api: '', token: '' });
 let memos = LS.get('dm.memos', []);   // サーバーの内容＋未送信分を反映したもの
 let queue = LS.get('dm.queue', []);   // 未送信の操作 [{action, payload}]
-let bookInfo = LS.get('dm.books', {}); // タイトル → {isbn, author, publisher, pages, cover, pending}
+let bookInfo = LS.get('dm.books', {}); // タイトル → {isbn, author, publisher, pages, cover, pending, status, startedAt, finishedAt}
 let shelfMode = LS.get('dm.shelfMode', 'list'); // 本棚の表示：list / grid
+let shelfFilter = LS.get('dm.shelfFilter', 'all'); // 本棚の絞り込み：all / reading / want / done
 let pendingIsbn = '';                   // 検索で見つからなかった ISBN（次に保存する本に付ける）
 let flushing = false;
 let lastRefresh = 0;
@@ -24,6 +25,8 @@ let bookSort = 'page';
 let searchTag = '';
 
 const $ = (sel) => document.querySelector(sel);
+const icon = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const STATUS = { reading: '読書中', want: '読む予定', done: '読了' };
 const configured = () => Boolean(settings.api && settings.token);
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS は Mac として名乗る
@@ -121,7 +124,9 @@ function saveState() {
 
 function applyLocal(op) {
   if (op.action === 'saveBook') {
-    bookInfo[op.payload.book.title] = op.payload.book;
+    // サーバーと同じく、送らなかった項目（読書の状態など）は残す
+    const { title } = op.payload.book;
+    bookInfo[title] = { ...(bookInfo[title] || {}), ...op.payload.book };
     return;
   }
   if (op.action === 'delete') {
@@ -196,18 +201,42 @@ function updateBadge() {
 }
 
 // ---------- 集計 ----------
+// 読書の状態。未設定でもメモがあれば「読書中」とみなす
+function statusOf(title, count) {
+  const s = (bookInfo[title] || {}).status;
+  if (STATUS[s]) return s;
+  return count ? 'reading' : '';
+}
+
 function books() {
   const map = new Map();
   for (const m of memos) {
     if (!m.title) continue;
-    const b = map.get(m.title) || { title: m.title, count: 0, last: '', lastDate: '', maxPage: 0 };
+    const b = map.get(m.title) || { title: m.title, count: 0, last: '', firstDate: '', lastDate: '', maxPage: 0 };
     b.count += 1;
     if (activity(m) > b.last) b.last = activity(m);
     if (m.date > b.lastDate) b.lastDate = m.date;
+    if (m.date && (!b.firstDate || m.date < b.firstDate)) b.firstDate = m.date;
     if (pageNum(m) !== Infinity && pageNum(m) > b.maxPage) b.maxPage = pageNum(m);
     map.set(m.title, b);
   }
-  return [...map.values()].sort((a, b) => (a.last < b.last ? 1 : -1));
+  // メモがまだない本も、状態が付いていれば本棚に並べる（読む予定の本など）
+  for (const [title, info] of Object.entries(bookInfo)) {
+    if (!map.has(title) && STATUS[info.status]) {
+      map.set(title, { title, count: 0, last: info.updatedAt || '', firstDate: '', lastDate: '', maxPage: 0 });
+    }
+  }
+  const list = [...map.values()];
+  list.forEach((b) => { b.status = statusOf(b.title, b.count); });
+  return list.sort((a, b) => (a.last < b.last ? 1 : -1));
+}
+
+function saveBookPatch(title, patch) {
+  enqueue('saveBook', { book: { ...(bookInfo[title] || {}), ...patch, title } });
+}
+
+function statusBadge(status) {
+  return STATUS[status] ? `<span class="status-badge s-${status}">${STATUS[status]}</span>` : '';
 }
 
 // 総ページ数が分かっていれば、メモした最大ページから読書位置（%）を出す
@@ -247,7 +276,7 @@ function memoHTML(m, { showBook = true, q = '' } = {}) {
   return `<div class="memo" data-id="${esc(m.id)}">
     <div class="memo-meta">
       ${showBook ? `<span class="m-book">${highlight(m.title, q)}</span>` : ''}
-      ${m.page ? `<span>p.${esc(m.page)}</span>` : ''}
+      ${m.page ? `<span class="m-page">p.${esc(m.page)}</span>` : ''}
       <span>${esc(m.date)}</span>
       ${pending ? '<span class="pending">未送信</span>' : ''}
     </div>
@@ -267,9 +296,10 @@ function renderAddView() {
 
   const meta = bookMetaText(current)
     || (pendingIsbn ? `ISBN ${pendingIsbn}（保存後、本の情報が登録され次第自動で取得します）` : '');
+  const badge = current ? statusBadge((bookInfo[current] || {}).status) : '';
   const infoEl = $('#bookInfo');
-  infoEl.hidden = !meta;
-  infoEl.innerHTML = meta ? `${coverImg(current, '')}<span>${esc(meta)}</span>` : '';
+  infoEl.hidden = !meta && !badge;
+  infoEl.innerHTML = meta || badge ? `${coverImg(current, '')}<span>${badge}${esc(meta)}</span>` : '';
 
   const chosen = parseTags($('#fTags').value);
   $('#recentTags').innerHTML = tagCounts().slice(0, 12)
@@ -282,36 +312,71 @@ function renderAddView() {
     : '<p class="empty">まだメモはありません</p>';
 }
 
+const SHELF_EMPTY = {
+  all: 'まだ本がありません。「本を追加」か、記録画面でメモを書くと並びます',
+  reading: '読書中の本はありません',
+  want: '読む予定の本はありません。「本を追加」で登録できます',
+  done: '読み終えた本はまだありません',
+};
+
+// 本棚の並び：読書中 → 読む予定 → 読了。読了は読み終えた日の新しい順、ほかは最後に触った順
+function shelfSort(a, b) {
+  const rank = { reading: 0, want: 1, done: 2, '': 3 };
+  const key = (x) => (x.status === 'done' ? (bookInfo[x.title] || {}).finishedAt || x.lastDate : x.last);
+  return rank[a.status] - rank[b.status] || (key(a) < key(b) ? 1 : -1);
+}
+
 function renderShelf() {
-  const bs = books();
+  const all = books();
+  const counts = { all: all.length, reading: 0, want: 0, done: 0 };
+  all.forEach((b) => { if (counts[b.status] !== undefined) counts[b.status] += 1; });
+  $('#statusFilter').innerHTML = [['all', 'すべて'], ...Object.entries(STATUS)]
+    .map(([k, label]) => `<button type="button" data-filter="${k}" class="${k === shelfFilter ? 'active' : ''}">${label}<span class="n">${counts[k]}</span></button>`)
+    .join('');
+
+  const bs = all.filter((b) => shelfFilter === 'all' || b.status === shelfFilter).sort(shelfSort);
+  $('#shelfCount').textContent = bs.length ? `${bs.length}冊` : '';
   const list = $('#shelfList');
   document.querySelectorAll('.shelf-toggle button')
     .forEach((btn) => btn.classList.toggle('active', btn.dataset.shelf === shelfMode));
   list.classList.toggle('grid', shelfMode === 'grid' && bs.length > 0);
 
-  if (shelfMode === 'grid') {
-    list.innerHTML = bs.length
-      ? bs.map((b) => `<div class="gbook" data-title="${esc(b.title)}">
-          ${coverImg(b.title, 'gbook-cover')
-            || `<div class="gbook-cover gbook-blank" style="background:${spineColor(b.title)}">${esc(b.title)}</div>`}
-          <div class="gbook-title">${esc(b.title)}</div>
-          ${progressHTML(progress(b))}
-        </div>`).join('')
-      : '<p class="empty">まだ本がありません</p>';
+  if (!bs.length) {
+    list.innerHTML = `<p class="empty">${SHELF_EMPTY[shelfFilter] || SHELF_EMPTY.all}</p>`;
     return;
   }
 
-  list.innerHTML = bs.length
-    ? bs.map((b) => `<div class="book" data-title="${esc(b.title)}">
+  if (shelfMode === 'grid') {
+    list.innerHTML = bs.map((b) => `<div class="gbook" data-title="${esc(b.title)}">
+        <div class="gbook-cv">
+          ${coverImg(b.title, 'gbook-cover')
+            || `<div class="gbook-cover gbook-blank" style="background:${spineColor(b.title)}">${esc(b.title)}</div>`}
+          ${shelfFilter === 'all' ? statusBadge(b.status) : ''}
+        </div>
+        <div class="gbook-title">${esc(b.title)}</div>
+        ${b.status === 'reading' ? progressHTML(progress(b)) : ''}
+      </div>`).join('');
+    return;
+  }
+
+  list.innerHTML = bs.map((b) => {
+    const info = bookInfo[b.title] || {};
+    const pct = progress(b);
+    const sub = [
+      info.author,
+      b.status === 'done' && info.finishedAt ? `${info.finishedAt} 読了` : b.lastDate && `最終 ${b.lastDate}`,
+      b.status === 'reading' && pct !== null && `${pct}%`,
+    ].filter(Boolean).map(esc).join(' ・ ');
+    return `<div class="book" data-title="${esc(b.title)}">
         ${coverImg(b.title, 'book-cover') || `<span class="book-spine" style="background:${spineColor(b.title)}"></span>`}
         <div class="book-info">
           <div class="book-title">${esc(b.title)}</div>
-          <div class="book-sub">${esc([(bookInfo[b.title] || {}).author, `最終 ${b.lastDate}`].filter(Boolean).join(' ・ '))}${progress(b) === null ? '' : ` ・ ${progress(b)}%`}</div>
-          ${progressHTML(progress(b))}
+          <div class="book-sub">${shelfFilter === 'all' ? statusBadge(b.status) : ''}<span>${sub}</span></div>
+          ${b.status === 'reading' ? progressHTML(pct) : ''}
         </div>
-        <span class="book-count">${b.count}件</span>
-      </div>`).join('')
-    : '<p class="empty">まだ本がありません</p>';
+        <span class="book-count">${b.count ? `${b.count}件` : ''}</span>
+      </div>`;
+  }).join('');
 }
 
 function renderBook() {
@@ -323,9 +388,19 @@ function renderBook() {
   if (info.cover) cover.src = info.cover;
   const b = books().find((x) => x.title === currentBook);
   const pct = b ? progress(b) : null;
-  $('#bookMeta').innerHTML = esc(bookMetaText(currentBook))
+  $('#bookMeta').innerHTML = `<div>${esc(bookMetaText(currentBook))}</div>`
     + (pct === null ? '' : `<div>読んだ位置 p.${b.maxPage}（${pct}%）</div>${progressHTML(pct)}`);
-  $('#bookScanBtn').textContent = info.isbn ? '📷 本の情報を更新' : '📷 本の情報を取得';
+  $('#bookScanBtn').innerHTML = icon('scan') + (info.isbn ? '本の情報を更新' : '本の情報を取得');
+
+  const status = b ? b.status : statusOf(currentBook, 0);
+  document.querySelectorAll('#bookStatus button')
+    .forEach((btn) => btn.classList.toggle('active', btn.dataset.status === status));
+  $('#bookStarted').value = info.startedAt || '';
+  $('#bookFinished').value = info.finishedAt || '';
+  $('#startedField').hidden = status !== 'reading' && status !== 'done';
+  $('#finishedField').hidden = status !== 'done';
+  $('.status-dates').hidden = $('#startedField').hidden;
+  $('#removeBookBtn').hidden = !b || b.count > 0; // メモのある本は外さない（メモを消すと外せる）
 
   const list = memos.filter((m) => m.title === currentBook);
   list.sort(bookSort === 'page'
@@ -409,16 +484,23 @@ $('#addForm').addEventListener('submit', (e) => {
   if (!title) { toast('タイトルを入力してください'); return; }
   if (!memo && !page) { toast('メモかページを入力してください'); return; }
 
+  const date = $('#fDate').value || today();
   enqueue('add', {
     memo: {
       id: uid(), createdAt: new Date().toISOString(),
-      title, date: $('#fDate').value || today(), page, memo, tags: parseTags($('#fTags').value),
+      title, date, page, memo, tags: parseTags($('#fTags').value),
     },
   });
+  const info = bookInfo[title] || {};
+  const patch = {};
   // 見つからなかった ISBN は、この本に付けて保存しておく（サーバーが毎日再検索する）
-  if (pendingIsbn && !(bookInfo[title] && bookInfo[title].isbn)) {
-    enqueue('saveBook', { book: { ...(bookInfo[title] || {}), title, isbn: pendingIsbn, pending: 'true' } });
+  if (pendingIsbn && !info.isbn) Object.assign(patch, { isbn: pendingIsbn, pending: 'true' });
+  // メモを書いたら「読書中」にする（読了の本に書き足したときはそのまま）
+  if (!STATUS[info.status] || info.status === 'want') {
+    const first = books().find((b) => b.title === title);
+    Object.assign(patch, { status: 'reading', startedAt: info.startedAt || (first && first.firstDate) || date });
   }
+  if (Object.keys(patch).length) saveBookPatch(title, patch);
   pendingIsbn = '';
   LS.set('dm.lastTitle', title);
   resetForm();
@@ -494,7 +576,7 @@ if (isIOS) {
     rec.onend = () => {
       rec = null;
       btn.classList.remove('listening');
-      btn.textContent = '🎤 音声入力';
+      btn.innerHTML = icon('mic') + '音声入力';
     };
     rec.start();
     btn.classList.add('listening');
@@ -739,10 +821,11 @@ $('#scanConfirm').addEventListener('click', () => { if (scanPick && scanPick.fou
 $('#scanRetry').addEventListener('click', () => { clearScanned(); startCamera(); });
 
 // 本を探して返す：{ isbn, found }（found がなければ呼び出し側で検索）／ISBN なしの本 { book }／キャンセル時は null
-function scanIsbn() {
+function scanIsbn(confirmLabel = 'この本で記録') {
   return new Promise((resolve) => {
     scanResolve = resolve;
     clearScanned();
+    $('#scanConfirm').textContent = confirmLabel;
     $('#isbnInput').value = '';
     $('#titleQuery').value = '';
     $('#findStatus').textContent = '';
@@ -1025,6 +1108,108 @@ document.querySelectorAll('.shelf-toggle button').forEach((btn) => btn.addEventL
   renderShelf();
 }));
 
+$('#statusFilter').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-filter]');
+  if (!btn) return;
+  shelfFilter = btn.dataset.filter;
+  LS.set('dm.shelfFilter', shelfFilter);
+  renderShelf();
+});
+
+// ---------- 読書の状態（本の詳細） ----------
+// 状態を変えたら、開始日・読了日が空なら自動で入れる（あとから日付欄で直せる）
+function statusPatch(title, status) {
+  const info = bookInfo[title] || {};
+  const b = books().find((x) => x.title === title);
+  const patch = { status };
+  // 読了にしたときは、メモがあれば最初のメモの日を開始日にする（なければ空のまま）
+  if (!info.startedAt && (status === 'reading' || (status === 'done' && b && b.firstDate))) {
+    patch.startedAt = (b && b.firstDate) || today();
+  }
+  if (status === 'done' && !info.finishedAt) patch.finishedAt = today();
+  return patch;
+}
+
+$('#bookStatus').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-status]');
+  if (!btn || !currentBook) return;
+  saveBookPatch(currentBook, statusPatch(currentBook, btn.dataset.status));
+  toast(`「${STATUS[btn.dataset.status]}」にしました`);
+});
+$('#bookStarted').addEventListener('change', (e) => saveBookPatch(currentBook, { startedAt: e.target.value }));
+$('#bookFinished').addEventListener('change', (e) => saveBookPatch(currentBook, { finishedAt: e.target.value }));
+$('#removeBookBtn').addEventListener('click', () => {
+  saveBookPatch(currentBook, { status: '' });
+  toast(`『${currentBook}』を本棚から外しました`);
+  showView('shelf');
+});
+
+// ---------- 本を追加（メモなしで本棚に入れる） ----------
+const addBookDialog = $('#addBookDialog');
+let abBook = null;     // 探して見つけた本の情報
+let abStatus = 'want';
+
+function renderAddBook() {
+  document.querySelectorAll('#abStatus button')
+    .forEach((btn) => btn.classList.toggle('active', btn.dataset.status === abStatus));
+  const meta = abBook
+    ? [abBook.author, abBook.publisher, abBook.pages && `全${abBook.pages}ページ`,
+      String(abBook.pending) === 'true' && `ISBN ${abBook.isbn}（本の情報は登録され次第、自動で取得します）`].filter(Boolean).join(' ／ ')
+    : '';
+  $('#abInfo').hidden = !meta;
+  $('#abInfo').innerHTML = meta
+    ? (abBook.cover ? `<img src="${esc(abBook.cover)}" alt="" referrerpolicy="no-referrer">` : '') + `<span>${esc(meta)}</span>`
+    : '';
+}
+
+$('#addBookBtn').addEventListener('click', () => {
+  abBook = null;
+  abStatus = shelfFilter === 'reading' || shelfFilter === 'done' ? shelfFilter : 'want';
+  $('#abTitle').value = '';
+  renderAddBook();
+  addBookDialog.showModal();
+});
+$('#abCancel').addEventListener('click', () => addBookDialog.close());
+$('#abStatus').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-status]');
+  if (!btn) return;
+  abStatus = btn.dataset.status;
+  renderAddBook();
+});
+
+$('#abScan').addEventListener('click', async () => {
+  const picked = await scanIsbn('この本を追加');
+  if (!picked) return;
+  if (picked.book) {
+    abBook = picked.book;
+    $('#abTitle').value = picked.book.title;
+  } else {
+    const known = Object.values(bookInfo).find((b) => b.isbn === picked.isbn);
+    const found = await resolvePick(picked);
+    if (found.error) { toast(found.error); return; }
+    if (found.notFound) {
+      abBook = { isbn: picked.isbn, pending: 'true' };
+      $('#abTitle').value = known ? known.title : '';
+      if (!known) { $('#abTitle').focus(); toast('まだ登録されていない本です。タイトルを入力してください'); }
+    } else {
+      abBook = found.book;
+      $('#abTitle').value = known ? known.title : found.book.title;
+    }
+  }
+  renderAddBook();
+});
+
+$('#addBookForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const title = $('#abTitle').value.trim();
+  if (!title) { toast('タイトルを入力してください'); return; }
+  const filled = abBook ? Object.fromEntries(Object.entries(abBook).filter(([, v]) => v)) : {};
+  delete filled.title;
+  saveBookPatch(title, { ...filled, ...statusPatch(title, abStatus) });
+  addBookDialog.close();
+  toast(`『${title}』を「${STATUS[abStatus]}」に追加しました`);
+});
+
 // ---------- 一覧のタップ → 編集 ----------
 document.addEventListener('click', (e) => {
   const memoEl = e.target.closest('.memo[data-id]');
@@ -1093,9 +1278,13 @@ editForm.addEventListener('submit', (e) => {
       memo: editForm.memo.value.trim(), tags: parseTags(editForm.tags.value),
     },
   });
-  // タイトルを直したら、本の情報（著者・表紙など）も新しいタイトルに引き継ぐ
+  // タイトルを直したら、本の情報（著者・表紙・読書の状態など）も新しいタイトルに引き継ぐ
   if (title !== m.title && bookInfo[m.title] && !bookInfo[title]) {
     enqueue('saveBook', { book: { ...bookInfo[m.title], title } });
+  }
+  // 古いタイトルのメモがなくなったら、古い本が本棚に残らないよう状態を外す
+  if (title !== m.title && STATUS[(bookInfo[m.title] || {}).status] && !memos.some((x) => x.title === m.title)) {
+    saveBookPatch(m.title, { status: '' });
   }
   if (currentBook === m.title && title !== m.title) currentBook = title;
   editDialog.close();

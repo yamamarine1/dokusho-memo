@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f1ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1816" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="読書メモ">
@@ -15,11 +15,29 @@
   <title>読書メモ</title>
 </head>
 <body>
+  <!-- アイコン（線画）。<svg class="i"><use href="#i-名前"/></svg> で使う -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></symbol>
+      <symbol id="i-books" viewBox="0 0 24 24"><rect x="3.5" y="4" width="4.5" height="16" rx="1"/><rect x="9.5" y="4" width="4.5" height="16" rx="1"/><path d="M15.6 5.4l3.6-.9 3.1 14.6-3.6.9z"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.5"/><circle cx="10" cy="17" r="2.5"/></symbol>
+      <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 015.5 4H8M16 4h2.5A1.5 1.5 0 0120 5.5V8M20 16v2.5a1.5 1.5 0 01-1.5 1.5H16M8 20H5.5A1.5 1.5 0 014 18.5V16"/><path d="M8 8.5v7M11 8.5v7M13.5 8.5v7M16 8.5v7"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="7" rx="1"/><rect x="13.5" y="4" width="6.5" height="7" rx="1"/><rect x="4" y="13.5" width="6.5" height="7" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="7" rx="1"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 15.5l-5-5-9 9"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 015.5 7h2l1.5-2.5h6L16.5 7h2A1.5 1.5 0 0120 8.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></symbol>
+    </defs>
+  </svg>
+
   <header class="topbar">
     <h1 id="viewTitle">記録</h1>
     <div class="topbar-right">
       <span id="syncBadge" class="badge" hidden></span>
-      <button id="settingsBtn" class="icon-btn" aria-label="設定">⚙︎</button>
+      <button id="settingsBtn" class="icon-btn" aria-label="設定"><svg class="i"><use href="#i-settings"/></svg></button>
     </div>
   </header>
 
@@ -31,7 +49,7 @@
           <span>タイトル</span>
           <span class="input-row">
             <input id="fTitle" name="title" list="bookList" placeholder="本のタイトル" required enterkeyhint="next">
-            <button type="button" id="scanBtn" class="scan-btn" aria-label="バーコードで本を読み取る">📷</button>
+            <button type="button" id="scanBtn" class="scan-btn" aria-label="本を探す（バーコード・題名）"><svg class="i"><use href="#i-scan"/></svg></button>
           </span>
         </label>
         <div id="recentBooks" class="chips"></div>
@@ -51,12 +69,12 @@
         <label class="field">
           <span class="field-head">
             メモ
-            <button type="button" id="micBtn" class="mic-btn" hidden>🎤 音声入力</button>
+            <button type="button" id="micBtn" class="mic-btn" hidden><svg class="i"><use href="#i-mic"/></svg>音声入力</button>
           </span>
           <textarea id="fMemo" name="memo" rows="6" placeholder="気づいたこと・引用など。キーボードのマイクでも音声入力できます"></textarea>
         </label>
-        <p id="micHint" class="mic-hint" hidden>🎤 キーボードの<b>マイクのボタン</b>を押して話してください（終わったらもう一度押す）</p>
-        <p class="hint">📷 本の一文を取り込むには：メモ欄をタップ →「テキストをスキャン」</p>
+        <p id="micHint" class="mic-hint" hidden>キーボードの<b>マイクのボタン</b>を押して話してください（終わったらもう一度押す）</p>
+        <p class="hint">本の一文を取り込むには：メモ欄をタップ →「テキストをスキャン」</p>
 
         <label class="field">
           <span>タグ <small>（スペース区切り）</small></span>
@@ -73,46 +91,72 @@
 
     <!-- 本棚 -->
     <section id="view-shelf" class="view">
-      <div class="sort-toggle shelf-toggle">
-        <button data-shelf="list">リスト</button>
-        <button data-shelf="grid">表紙</button>
+      <div id="statusFilter" class="seg seg-wide"></div>
+      <div class="shelf-bar">
+        <span id="shelfCount" class="hint"></span>
+        <span class="spacer"></span>
+        <div class="seg shelf-toggle">
+          <button data-shelf="list" aria-label="リスト"><svg class="i"><use href="#i-list"/></svg></button>
+          <button data-shelf="grid" aria-label="表紙"><svg class="i"><use href="#i-grid"/></svg></button>
+        </div>
+        <button id="addBookBtn" class="small accent"><svg class="i"><use href="#i-plus"/></svg>本を追加</button>
       </div>
       <div id="shelfList" class="book-list"></div>
     </section>
 
     <!-- 本の詳細 -->
     <section id="view-book" class="view">
-      <button id="backBtn" class="link-btn">‹ 本棚</button>
+      <button id="backBtn" class="link-btn"><svg class="i"><use href="#i-back"/></svg>本棚</button>
       <div class="book-head">
         <img id="bookCover" class="book-cover-lg" alt="" hidden>
         <div class="book-head-main">
           <h2 id="bookTitle"></h2>
           <div id="bookMeta" class="book-meta"></div>
           <div class="book-actions">
-            <button id="bookAddBtn" class="small">＋ この本にメモ</button>
-            <button id="bookScanBtn" class="small">📷 本の情報を取得</button>
+            <button id="bookAddBtn" class="small accent"><svg class="i"><use href="#i-plus"/></svg>この本にメモ</button>
+            <button id="bookScanBtn" class="small"></button>
           </div>
         </div>
       </div>
-      <div class="sort-toggle">
-        <button data-sort="page" class="active">ページ順</button>
-        <button data-sort="date">日付順</button>
+
+      <div class="card status-card">
+        <div id="bookStatus" class="seg seg-wide status-seg">
+          <button data-status="want">読む予定</button>
+          <button data-status="reading">読書中</button>
+          <button data-status="done">読了</button>
+        </div>
+        <div class="status-dates">
+          <label id="startedField" class="field"><span>読み始めた日</span><input id="bookStarted" type="date"></label>
+          <label id="finishedField" class="field"><span>読み終えた日</span><input id="bookFinished" type="date"></label>
+        </div>
+        <button id="removeBookBtn" class="danger small" hidden>本棚から外す</button>
+      </div>
+
+      <div class="memo-head">
+        <h3 class="section-title">メモ</h3>
+        <div class="seg sort-toggle">
+          <button data-sort="page" class="active">ページ順</button>
+          <button data-sort="date">日付順</button>
+        </div>
       </div>
       <div id="bookMemos" class="memo-list"></div>
     </section>
 
     <!-- 検索 -->
     <section id="view-search" class="view">
-      <input id="searchInput" type="search" class="search" placeholder="タイトル・メモ・タグを検索">
+      <div class="search-wrap">
+        <svg class="i"><use href="#i-search"/></svg>
+        <input id="searchInput" type="search" class="search" placeholder="タイトル・メモ・タグを検索">
+      </div>
       <div id="tagCloud" class="chips"></div>
       <div id="searchResults" class="memo-list"></div>
     </section>
   </main>
 
   <nav class="tabbar">
-    <button data-view="add" class="active"><span>✎</span>記録</button>
-    <button data-view="shelf"><span>▤</span>本棚</button>
-    <button data-view="search"><span>⌕</span>検索</button>
+    <button data-view="add" class="active"><svg class="i"><use href="#i-pen"/></svg>記録</button>
+    <button data-view="shelf"><svg class="i"><use href="#i-books"/></svg>本棚</button>
+    <button data-view="search"><svg class="i"><use href="#i-search"/></svg>検索</button>
   </nav>
 
   <datalist id="bookList"></datalist>
@@ -137,6 +181,34 @@
     </form>
   </dialog>
 
+  <!-- 本を追加（メモなしで本棚に入れる。読む予定の本など） -->
+  <dialog id="addBookDialog">
+    <form id="addBookForm" class="form" method="dialog" autocomplete="off">
+      <h2>本を追加</h2>
+      <label class="field">
+        <span>タイトル</span>
+        <span class="input-row">
+          <input id="abTitle" list="bookList" placeholder="本のタイトル" required>
+          <button type="button" id="abScan" class="scan-btn" aria-label="本を探す（バーコード・題名）"><svg class="i"><use href="#i-scan"/></svg></button>
+        </span>
+      </label>
+      <div id="abInfo" class="book-info-line" hidden></div>
+      <div class="field">
+        <span>ステータス</span>
+        <div id="abStatus" class="seg seg-wide status-seg">
+          <button type="button" data-status="want">読む予定</button>
+          <button type="button" data-status="reading">読書中</button>
+          <button type="button" data-status="done">読了</button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" id="abCancel">キャンセル</button>
+        <button type="submit" class="primary">追加</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- 設定 -->
   <dialog id="settingsDialog">
     <form id="settingsForm" class="form" method="dialog" autocomplete="off">
@@ -147,7 +219,7 @@
       <label class="field"><span>設定コード（ほかの端末からコピーしたもの）</span>
         <span class="input-row">
           <input id="setupCode" placeholder="DM1-…">
-          <button type="button" id="pasteCode">📋 貼り付け</button>
+          <button type="button" id="pasteCode">貼り付け</button>
         </span>
       </label>
 
@@ -202,7 +274,7 @@
           <input id="titleQuery" type="search" placeholder="題名で探す（電子書籍など）" enterkeyhint="search">
           <button type="button" id="titleGo">検索</button>
         </div>
-        <label class="photo-btn shot-btn">🖼 スクリーンショットから探す
+        <label class="photo-btn shot-btn"><svg class="i"><use href="#i-image"/></svg>スクリーンショットから探す
           <input id="scanShot" type="file" accept="image/*" hidden>
         </label>
         <p id="findStatus" class="hint"></p>
@@ -222,7 +294,7 @@
         <button type="button" id="isbnGo">検索</button>
       </div>
       <div class="dialog-actions">
-        <label class="photo-btn">写真から読み取る
+        <label class="photo-btn"><svg class="i"><use href="#i-camera"/></svg>写真から読み取る
           <input id="scanPhoto" type="file" accept="image/*" capture="environment" hidden>
         </label>
         <span class="spacer"></span>
