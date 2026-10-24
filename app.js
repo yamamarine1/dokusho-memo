@@ -235,8 +235,10 @@ function saveBookPatch(title, patch) {
   enqueue('saveBook', { book: { ...(bookInfo[title] || {}), ...patch, title } });
 }
 
-function statusBadge(status) {
-  return STATUS[status] ? `<span class="status-badge s-${status}">${STATUS[status]}</span>` : '';
+// タップでステータスを選べる印（本棚・記録画面）
+function statusPick(title, status) {
+  return `<button type="button" class="status-pick" data-pick="${esc(title)}" aria-label="ステータスを変える">`
+    + `<span class="status-badge s-${STATUS[status] ? status : 'none'}">${STATUS[status] || 'ステータスを選ぶ'}<span class="caret">▾</span></span></button>`;
 }
 
 // 総ページ数が分かっていれば、メモした最大ページから読書位置（%）を出す
@@ -296,7 +298,8 @@ function renderAddView() {
 
   const meta = bookMetaText(current)
     || (pendingIsbn ? `ISBN ${pendingIsbn}（保存後、本の情報が登録され次第自動で取得します）` : '');
-  const badge = current ? statusBadge((bookInfo[current] || {}).status) : '';
+  const known = bs.find((b) => b.title === current) || bookInfo[current];
+  const badge = known ? statusPick(current, statusOf(current, known.count || 0)) : '';
   const infoEl = $('#bookInfo');
   infoEl.hidden = !meta && !badge;
   infoEl.innerHTML = meta || badge ? `${coverImg(current, '')}<span>${badge}${esc(meta)}</span>` : '';
@@ -351,7 +354,7 @@ function renderShelf() {
         <div class="gbook-cv">
           ${coverImg(b.title, 'gbook-cover')
             || `<div class="gbook-cover gbook-blank" style="background:${spineColor(b.title)}">${esc(b.title)}</div>`}
-          ${shelfFilter === 'all' ? statusBadge(b.status) : ''}
+          ${statusPick(b.title, b.status)}
         </div>
         <div class="gbook-title">${esc(b.title)}</div>
         ${b.status === 'reading' ? progressHTML(progress(b)) : ''}
@@ -371,7 +374,7 @@ function renderShelf() {
         ${coverImg(b.title, 'book-cover') || `<span class="book-spine" style="background:${spineColor(b.title)}"></span>`}
         <div class="book-info">
           <div class="book-title">${esc(b.title)}</div>
-          <div class="book-sub">${shelfFilter === 'all' ? statusBadge(b.status) : ''}<span>${sub}</span></div>
+          <div class="book-sub">${statusPick(b.title, b.status)}<span>${sub}</span></div>
           ${b.status === 'reading' ? progressHTML(pct) : ''}
         </div>
         <span class="book-count">${b.count ? `${b.count}件` : ''}</span>
@@ -1215,6 +1218,31 @@ document.addEventListener('click', (e) => {
   const memoEl = e.target.closest('.memo[data-id]');
   if (memoEl) openEdit(memoEl.dataset.id);
 });
+
+// ---------- ステータスを選ぶ（本棚・記録画面の印をタップ） ----------
+const statusDialog = $('#statusDialog');
+let pickTitle = '';
+
+document.addEventListener('click', (e) => {
+  const pick = e.target.closest('[data-pick]');
+  if (!pick) return;
+  e.stopPropagation(); // 本の詳細は開かない
+  pickTitle = pick.dataset.pick;
+  const b = books().find((x) => x.title === pickTitle);
+  const current = b ? b.status : statusOf(pickTitle, 0);
+  $('#sdTitle').textContent = pickTitle;
+  document.querySelectorAll('#sdOptions button')
+    .forEach((btn) => btn.classList.toggle('active', btn.dataset.status === current));
+  statusDialog.showModal();
+}, true);
+$('#sdOptions').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-status]');
+  if (!btn || !pickTitle) return;
+  saveBookPatch(pickTitle, statusPatch(pickTitle, btn.dataset.status));
+  statusDialog.close();
+  toast(`『${pickTitle}』を「${STATUS[btn.dataset.status]}」にしました`);
+});
+$('#sdCancel').addEventListener('click', () => statusDialog.close());
 
 $('#shelfList').addEventListener('click', (e) => {
   const el = e.target.closest('[data-title]');

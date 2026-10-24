@@ -209,6 +209,23 @@
     </form>
   </dialog>
 
+  <!-- ステータスを選ぶ（本棚・記録画面の印をタップしたとき） -->
+  <dialog id="statusDialog">
+    <div class="form">
+      <h2>ステータス</h2>
+      <p id="sdTitle" class="sd-title"></p>
+      <div id="sdOptions" class="sd-options">
+        <button type="button" data-status="want">読む予定</button>
+        <button type="button" data-status="reading">読書中</button>
+        <button type="button" data-status="done">読了</button>
+      </div>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" id="sdCancel">キャンセル</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- 設定 -->
   <dialog id="settingsDialog">
     <form id="settingsForm" class="form" method="dialog" autocomplete="off">

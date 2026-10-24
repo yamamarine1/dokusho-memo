@@ -225,6 +225,20 @@ mark { background: #f3d37a; color: #2b2620; border-radius: 3px; padding: 0 1px; 
 .s-reading { background: var(--accent-soft); color: var(--accent); }
 .s-want { background: var(--want-soft); color: var(--want); }
 .s-done { background: var(--done-soft); color: var(--done); }
+.s-none { background: var(--surface-2); color: var(--muted); }
+
+/* タップでステータスを選ぶ印 */
+.status-pick { background: none; border: none; padding: 0; margin: 0; box-shadow: none; line-height: 1; font: inherit; cursor: pointer; }
+.status-pick .caret { font-size: 9px; margin-left: 4px; opacity: .7; }
+.gbook-cv .status-pick { position: absolute; left: 6px; bottom: 6px; }
+.gbook-cv .status-pick .status-badge { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.book-info-line .status-pick { margin-right: 6px; vertical-align: middle; }
+.sd-title { margin: 0; font-family: var(--serif); font-weight: 600; color: var(--muted); overflow-wrap: anywhere; }
+.sd-options { display: flex; flex-direction: column; gap: 8px; }
+.sd-options button { padding: 13px; font-size: 16px; text-align: center; }
+.sd-options button.active[data-status="want"] { background: var(--want-soft); color: var(--want); font-weight: 600; }
+.sd-options button.active[data-status="reading"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sd-options button.active[data-status="done"] { background: var(--done-soft); color: var(--done); font-weight: 600; }
 
 .book-cover { width: 40px; height: 58px; object-fit: cover; border-radius: 3px 5px 5px 3px; flex: none; box-shadow: var(--shadow-cover); }
 .progress { height: 3px; background: var(--surface-2); border-radius: 2px; margin-top: 4px; overflow: hidden; }
