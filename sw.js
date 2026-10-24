@@ -1,6 +1,6 @@
 // オフラインでもアプリを開けるよう、画面のファイルだけをキャッシュする。
 // ファイルを更新したら VERSION を上げること。
-const VERSION = 'v11';
+const VERSION = 'v12';
 const CACHE = `dokusho-memo-${VERSION}`;
 const SHELL = [
   './',
@@ -18,7 +18,11 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // ブラウザの HTTP キャッシュ（GitHub Pages は 10 分）を通さずに取る。
+  // 通すと古い index.html と新しい app.js が混ざり、アプリが動かなくなる
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -34,9 +38,9 @@ self.addEventListener('fetch', (e) => {
   // API（Apps Script）への通信や POST には関与しない
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // ネット優先、つながらなければキャッシュ
+  // ネット優先、つながらなければキャッシュ。HTTP キャッシュは毎回サーバーに確かめる（no-cache）
   e.respondWith(
-    fetch(e.request)
+    fetch(new Request(e.request.url, { cache: 'no-cache' }))
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));

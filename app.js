@@ -1,5 +1,19 @@
 'use strict';
 
+// index.html と版がずれたら（古いキャッシュが混ざったとき）一度だけ読み直す。
+// 画面の部品が見つからずに途中で止まり、ボタンが効かなくなるのを防ぐ。
+// sw.js の VERSION と index.html の app-version も一緒に上げること。
+const APP_VERSION = 'v12';
+(() => {
+  const meta = document.querySelector('meta[name="app-version"]');
+  if (meta && meta.content === APP_VERSION) return;
+  try {
+    if (sessionStorage.getItem('dm.reloadFor') === APP_VERSION) return;
+    sessionStorage.setItem('dm.reloadFor', APP_VERSION);
+  } catch { return; }
+  location.reload();
+})();
+
 // ---------- 保存（この端末のキャッシュ） ----------
 const LS = {
   get(key, fallback) {
