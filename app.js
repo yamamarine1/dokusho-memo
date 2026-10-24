@@ -298,11 +298,16 @@ function renderAddView() {
 
   const meta = bookMetaText(current)
     || (pendingIsbn ? `ISBN ${pendingIsbn}（保存後、本の情報が登録され次第自動で取得します）` : '');
-  const known = bs.find((b) => b.title === current) || bookInfo[current];
-  const badge = known ? statusPick(current, statusOf(current, known.count || 0)) : '';
   const infoEl = $('#bookInfo');
-  infoEl.hidden = !meta && !badge;
-  infoEl.innerHTML = meta || badge ? `${coverImg(current, '')}<span>${badge}${esc(meta)}</span>` : '';
+  infoEl.hidden = !meta;
+  infoEl.innerHTML = meta ? `${coverImg(current, '')}<span>${esc(meta)}</span>` : '';
+
+  // タイトルが入ったらステータスを選べる（本棚にまだない本は何も選ばれていない）
+  const shelved = bs.find((b) => b.title === current);
+  const status = shelved ? shelved.status : '';
+  $('#fStatusField').hidden = !current;
+  document.querySelectorAll('#fStatus button')
+    .forEach((btn) => btn.classList.toggle('active', btn.dataset.status === status));
 
   const chosen = parseTags($('#fTags').value);
   $('#recentTags').innerHTML = tagCounts().slice(0, 12)
@@ -485,7 +490,12 @@ $('#addForm').addEventListener('submit', (e) => {
   const memo = $('#fMemo').value.trim();
   const page = $('#fPage').value.trim();
   if (!title) { toast('タイトルを入力してください'); return; }
-  if (!memo && !page) { toast('メモかページを入力してください'); return; }
+  if (!memo && !page) {
+    toast(books().some((b) => b.title === title)
+      ? `『${title}』は本棚に入っています。メモを残すときはメモかページを入力してください`
+      : 'メモかページを入力してください（メモなしで本棚に入れるときは、ステータスを選んでください）');
+    return;
+  }
 
   const date = $('#fDate').value || today();
   enqueue('add', {
@@ -514,6 +524,21 @@ $('#addForm').addEventListener('submit', (e) => {
 ['#fTitle', '#fDate', '#fPage', '#fMemo', '#fTags'].forEach((sel) => $(sel).addEventListener('input', saveDraft));
 $('#fTitle').addEventListener('input', renderAddView);
 $('#fTags').addEventListener('input', renderAddView);
+
+// ステータスを選んだら、その場で本棚に入れる（メモはなくてよい）
+$('#fStatus').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-status]');
+  const title = $('#fTitle').value.trim();
+  if (!btn || !title) return;
+  const info = bookInfo[title] || {};
+  const patch = statusPatch(title, btn.dataset.status);
+  if (pendingIsbn && !info.isbn) Object.assign(patch, { isbn: pendingIsbn, pending: 'true' });
+  saveBookPatch(title, patch);
+  pendingIsbn = '';
+  LS.set('dm.lastTitle', title);
+  renderAddView();
+  toast(`『${title}』を「${STATUS[btn.dataset.status]}」で本棚に入れました`);
+});
 
 $('#recentBooks').addEventListener('click', (e) => {
   const chip = e.target.closest('[data-title]');
