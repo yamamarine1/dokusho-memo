@@ -276,6 +276,7 @@ mark { background: #f3d37a; color: #2b2620; border-radius: 3px; padding: 0 1px; 
 .book-meta { font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
 .book-meta .progress { max-width: 240px; }
 .book-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.cover-preview { display: block; width: 160px; height: 240px; margin: 4px auto; border-radius: 3px 7px 7px 3px; box-shadow: var(--shadow-cover); object-fit: cover; }
 
 .status-card { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
 .status-seg button.active[data-status="want"] { color: var(--want); }

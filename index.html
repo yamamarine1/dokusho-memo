@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="読書メモ">
-  <meta name="app-version" content="v15">
+  <meta name="app-version" content="v16">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" href="icons/icon-192.png">
@@ -127,6 +127,9 @@
           <div class="book-actions">
             <button id="bookAddBtn" class="small accent"><svg class="i"><use href="#i-plus"/></svg>この本にメモ</button>
             <button id="bookScanBtn" class="small"></button>
+            <button id="coverBtn" class="small"></button>
+            <button id="removeCoverBtn" class="small danger" hidden>表紙を外す</button>
+            <input id="coverInput" type="file" accept="image/*" hidden>
           </div>
         </div>
       </div>
@@ -247,6 +250,20 @@
       <div class="dialog-actions">
         <span class="spacer"></span>
         <button type="button" id="sdCancel">キャンセル</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 撮った表紙の確認 -->
+  <dialog id="coverDialog">
+    <div class="form">
+      <h2>この表紙で登録しますか？</h2>
+      <img id="coverPreview" class="cover-preview" alt="">
+      <div class="dialog-actions">
+        <button type="button" id="coverRetake">撮り直す</button>
+        <span class="spacer"></span>
+        <button type="button" id="coverCancel">キャンセル</button>
+        <button type="button" id="coverSave" class="primary">この表紙で登録</button>
       </div>
     </div>
   </dialog>

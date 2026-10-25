@@ -3,7 +3,7 @@
 // index.html と版がずれたら（古いキャッシュが混ざったとき）一度だけ読み直す。
 // 画面の部品が見つからずに途中で止まり、ボタンが効かなくなるのを防ぐ。
 // sw.js の VERSION と index.html の app-version も一緒に上げること。
-const APP_VERSION = 'v15';
+const APP_VERSION = 'v16';
 (() => {
   const meta = document.querySelector('meta[name="app-version"]');
   if (meta && meta.content === APP_VERSION) return;
@@ -456,6 +456,8 @@ function renderBook() {
   $('#bookMeta').innerHTML = `<div>${esc(bookMetaText(currentBook))}</div>`
     + (pct === null ? '' : `<div>読んだ位置 p.${b.maxPage}（${pct}%）</div>${progressHTML(pct)}`);
   $('#bookScanBtn').innerHTML = icon('scan') + (info.isbn ? '本の情報を更新' : '本の情報を取得');
+  $('#coverBtn').innerHTML = icon('camera') + (info.cover ? '表紙を撮り直す' : '表紙を撮る');
+  $('#removeCoverBtn').hidden = !String(info.cover || '').startsWith('data:'); // 版元ドットコムの表紙は外さない
 
   const status = b ? b.status : statusOf(currentBook, 0);
   document.querySelectorAll('#bookStatus button')
@@ -1277,6 +1279,67 @@ $('#ratingForm').addEventListener('submit', (e) => {
   saveRating(rateTitle, r);
   ratingDialog.close();
   toast(`『${rateTitle}』を ${r} 点にしました`);
+});
+
+// ---------- 表紙を撮る（表紙が見つからない本のため） ----------
+// 中央を 2:3 で切り抜き、240×360 の JPEG にする。スプレッドシートのセル（5 万文字）に入るよう
+// data URL が 45,000 文字以下になるまで画質を下げる
+const COVER_W = 240;
+const COVER_H = 360;
+const COVER_MAX_CHARS = 45000;
+const coverDialog = $('#coverDialog');
+let coverDraft = '';
+
+async function makeCoverDataUrl(file) {
+  let img;
+  try {
+    img = await createImageBitmap(file);
+  } catch {
+    img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('この画像は読み込めませんでした'));
+      el.src = URL.createObjectURL(file);
+    });
+  }
+  const w = img.width; const h = img.height;
+  const sw = Math.min(w, (h * COVER_W) / COVER_H);
+  const sh = (sw * COVER_H) / COVER_W;
+  const canvas = document.createElement('canvas');
+  canvas.width = COVER_W; canvas.height = COVER_H;
+  canvas.getContext('2d').drawImage(img, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, COVER_W, COVER_H);
+  for (let q = 0.8; q >= 0.29; q -= 0.1) {
+    const url = canvas.toDataURL('image/jpeg', q);
+    if (url.length <= COVER_MAX_CHARS) return url;
+  }
+  throw new Error('画像を小さくできませんでした');
+}
+
+$('#coverBtn').addEventListener('click', () => $('#coverInput').click());
+$('#coverRetake').addEventListener('click', () => $('#coverInput').click());
+$('#coverInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = ''; // 同じ写真を選び直せるように
+  if (!file || !currentBook) return;
+  try {
+    coverDraft = await makeCoverDataUrl(file);
+  } catch (err) {
+    toast(err.message || 'この画像は読み込めませんでした');
+    return;
+  }
+  $('#coverPreview').src = coverDraft;
+  if (!coverDialog.open) coverDialog.showModal();
+});
+$('#coverCancel').addEventListener('click', () => coverDialog.close());
+$('#coverSave').addEventListener('click', () => {
+  if (!coverDraft || !currentBook) return;
+  saveBookPatch(currentBook, { cover: coverDraft });
+  coverDialog.close();
+  toast('表紙を登録しました');
+});
+$('#removeCoverBtn').addEventListener('click', () => {
+  saveBookPatch(currentBook, { cover: '' });
+  toast('表紙を外しました');
 });
 
 $('#doneSort').addEventListener('click', (e) => {
