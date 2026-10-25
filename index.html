@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="読書メモ">
-  <meta name="app-version" content="v12">
+  <meta name="app-version" content="v13">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" href="icons/icon-192.png">
@@ -24,7 +24,7 @@
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
       <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.5"/><circle cx="10" cy="17" r="2.5"/></symbol>
       <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 015.5 4H8M16 4h2.5A1.5 1.5 0 0120 5.5V8M20 16v2.5a1.5 1.5 0 01-1.5 1.5H16M8 20H5.5A1.5 1.5 0 014 18.5V16"/><path d="M8 8.5v7M11 8.5v7M13.5 8.5v7M16 8.5v7"/></symbol>
-      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/></symbol>
+      <symbol id="i-paste" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="16" rx="2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
       <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
       <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
@@ -78,11 +78,10 @@
         <label class="field">
           <span class="field-head">
             メモ
-            <button type="button" id="micBtn" class="mic-btn" hidden><svg class="i"><use href="#i-mic"/></svg>音声入力</button>
+            <button type="button" id="pasteBtn" class="paste-btn"><svg class="i"><use href="#i-paste"/></svg>貼り付け</button>
           </span>
-          <textarea id="fMemo" name="memo" rows="6" placeholder="気づいたこと・引用など。キーボードのマイクでも音声入力できます"></textarea>
+          <textarea id="fMemo" name="memo" rows="6" placeholder="気づいたこと・引用など。AquaVoice で話したら「貼り付け」"></textarea>
         </label>
-        <p id="micHint" class="mic-hint" hidden>キーボードの<b>マイクのボタン</b>を押して話してください（終わったらもう一度押す）</p>
         <p class="hint">本の一文を取り込むには：メモ欄をタップ →「テキストをスキャン」</p>
 
         <label class="field">

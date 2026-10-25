@@ -3,7 +3,7 @@
 // index.html と版がずれたら（古いキャッシュが混ざったとき）一度だけ読み直す。
 // 画面の部品が見つからずに途中で止まり、ボタンが効かなくなるのを防ぐ。
 // sw.js の VERSION と index.html の app-version も一緒に上げること。
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 (() => {
   const meta = document.querySelector('meta[name="app-version"]');
   if (meta && meta.content === APP_VERSION) return;
@@ -499,7 +499,6 @@ function saveDraft() {
 
 $('#addForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  stopMic();
   const title = $('#fTitle').value.trim();
   const memo = $('#fMemo').value.trim();
   const page = $('#fPage').value.trim();
@@ -574,57 +573,45 @@ $('#recentTags').addEventListener('click', (e) => {
   renderAddView();
 });
 
-// ---------- 音声入力 ----------
-// iPhone / iPad のホーム画面アプリではブラウザの音声認識が固まることがあるため、
-// iOS ではキーボードの音声入力（マイクキー）に誘導する。パソコンではブラウザの音声認識を使う。
-const SR = isIOS ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
-let rec = null;
+// ---------- 貼り付け ----------
+// 音声入力は AquaVoice（アクションボタンで起動）で行う。AquaVoice はクリップボードに
+// コピーするだけなので、ここでメモ欄のカーソル位置に貼り付ける。
+// ボタンを押すとメモ欄からフォーカスが外れるため、外れたときのカーソル位置を覚えておく。
+// （覚えたあとに中身が変わっていたら使わず、末尾に足す）
+let memoCaret = null;
+$('#fMemo').addEventListener('blur', (e) => {
+  const area = e.target;
+  memoCaret = { start: area.selectionStart, end: area.selectionEnd, value: area.value };
+});
 
-function stopMic() {
-  if (rec) rec.stop();
-}
+$('#pasteBtn').addEventListener('click', async () => {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    toast('クリップボードを読み取れませんでした（許可されませんでした）');
+    return;
+  }
+  if (!text) { toast('クリップボードが空です'); return; }
 
-if (isIOS) {
-  const btn = $('#micBtn');
-  btn.hidden = false;
-  btn.addEventListener('click', () => {
-    const area = $('#fMemo');
-    area.focus();
-    area.setSelectionRange(area.value.length, area.value.length);
-    $('#micHint').hidden = false; // トーストはキーボードに隠れるので、メモ欄の下に案内を出す
-  });
-  $('#fMemo').addEventListener('blur', () => { $('#micHint').hidden = true; });
-} else if (SR) {
-  const btn = $('#micBtn');
-  btn.hidden = false;
-  btn.addEventListener('click', () => {
-    if (rec) { rec.stop(); return; }
-    const area = $('#fMemo');
-    const base = area.value && !/\s$/.test(area.value) ? area.value + '\n' : area.value;
-    rec = new SR();
-    rec.lang = 'ja-JP';
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (ev) => {
-      let text = '';
-      for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
-      area.value = base + text;
-      saveDraft();
-    };
-    rec.onerror = (ev) => {
-      if (ev.error === 'not-allowed') toast('マイクの使用が許可されていません');
-      else if (ev.error !== 'no-speech' && ev.error !== 'aborted') toast('音声入力エラー: ' + ev.error);
-    };
-    rec.onend = () => {
-      rec = null;
-      btn.classList.remove('listening');
-      btn.innerHTML = icon('mic') + '音声入力';
-    };
-    rec.start();
-    btn.classList.add('listening');
-    btn.textContent = '■ 停止';
-  });
-}
+  const area = $('#fMemo');
+  const v = area.value;
+  let start; let end;
+  if (document.activeElement === area) {
+    start = area.selectionStart; end = area.selectionEnd;
+  } else if (memoCaret && memoCaret.value === v) {
+    start = memoCaret.start; end = memoCaret.end;
+  } else {
+    // カーソルがないときは末尾に、改行を 1 つはさんで足す
+    if (v && !v.endsWith('\n')) text = '\n' + text;
+    start = end = v.length;
+  }
+  area.value = v.slice(0, start) + text + v.slice(end);
+  const caret = start + text.length;
+  area.focus();
+  area.setSelectionRange(caret, caret);
+  saveDraft();
+});
 
 // ---------- バーコード（ISBN）読み取り ----------
 let zxingLoading = null;

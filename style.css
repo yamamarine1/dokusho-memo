@@ -148,9 +148,7 @@ button.small { padding: 7px 12px; font-size: 13.5px; border-radius: 10px; }
 button.accent { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 button.danger { background: none; color: var(--danger); }
 button.link-btn { background: none; color: var(--accent); padding: 4px 0; gap: 2px; font-size: 15px; }
-.mic-btn { padding: 4px 10px; font-size: 12.5px; border-radius: 999px; gap: 4px; }
-.mic-btn.listening { background: var(--accent); color: var(--accent-ink); animation: pulse 1.2s infinite; }
-@keyframes pulse { 50% { opacity: .6; } }
+.paste-btn { padding: 4px 10px; font-size: 12.5px; border-radius: 999px; gap: 4px; }
 
 .hint { font-size: 12.5px; color: var(--muted); margin: 0; }
 .spacer { flex: 1; }
@@ -420,4 +418,3 @@ details .field { margin-bottom: 10px; }
 .qr-box svg { width: 148px; height: 148px; }
 .share-actions { display: flex; flex-direction: column; gap: 8px; }
 #copyCodeTop { background: var(--accent); color: var(--accent-ink); font-weight: 600; margin: 2px 0; }
-.mic-hint { margin: 0; padding: 9px 12px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-size: 14px; }
