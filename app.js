@@ -256,6 +256,13 @@ function books() {
   return list.sort((a, b) => (a.last < b.last ? 1 : -1));
 }
 
+// ISBN の検索結果から保存する本の情報を作る。検索で表紙が見つからなかったときは、
+// 今の表紙（自分で撮った表紙など）を残す（「本の情報を更新」で撮った表紙が消えないように）
+function bookFromLookup(title, found) {
+  const prev = bookInfo[title] || {};
+  return { ...found, title, cover: found.cover || prev.cover || '' };
+}
+
 function saveBookPatch(title, patch) {
   enqueue('saveBook', { book: { ...(bookInfo[title] || {}), ...patch, title } });
 }
@@ -1156,7 +1163,7 @@ $('#scanBtn').addEventListener('click', async () => {
     }
   } else {
     const title = known ? known.title : found.book.title;
-    enqueue('saveBook', { book: { ...found.book, title } });
+    enqueue('saveBook', { book: bookFromLookup(title, found.book) });
     $('#fTitle').value = title;
     pendingIsbn = '';
     toast(`『${title}』を読み取りました`);
@@ -1183,7 +1190,7 @@ $('#bookScanBtn').addEventListener('click', async () => {
     enqueue('saveBook', { book: { ...(bookInfo[title] || {}), title, isbn, pending: 'true' } });
     toast('まだ登録されていない本です。ISBN を保存し、登録され次第自動で情報を取得します');
   } else {
-    enqueue('saveBook', { book: { ...found.book, title } });
+    enqueue('saveBook', { book: bookFromLookup(title, found.book) });
     toast(`本の情報を取得しました（${found.book.title}）`);
   }
 });
@@ -1293,7 +1300,8 @@ let coverDraft = '';
 async function makeCoverDataUrl(file) {
   let img;
   try {
-    img = await createImageBitmap(file);
+    // iPhone の縦向きの写真は、画素は横向きで EXIF に向きが入っている。向きを当ててから切り抜く
+    img = await createImageBitmap(file, { imageOrientation: 'from-image' });
   } catch {
     img = await new Promise((resolve, reject) => {
       const el = new Image();
