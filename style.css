@@ -192,6 +192,9 @@ button.link-btn { background: none; color: var(--accent); padding: 4px 0; gap: 2
 .memo-meta .m-book { color: var(--ink); font-weight: 600; font-family: var(--serif); font-size: 13.5px; }
 .memo-meta .m-page { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .memo-meta .pending { color: var(--accent); }
+.memo-meta .ai-mark { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.summary-text { white-space: pre-wrap; line-height: 1.8; font-size: 14.5px; color: var(--ink); }
+.summary-field small { font-weight: 400; color: var(--muted); }
 .memo-body { white-space: pre-wrap; word-break: break-word; margin-top: 4px; line-height: 1.75; color: var(--ink); }
 .memo-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .memo-tags span { font-size: 12px; color: var(--accent); }

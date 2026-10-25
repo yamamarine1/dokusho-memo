@@ -1,6 +1,6 @@
 // オフラインでもアプリを開けるよう、画面のファイルだけをキャッシュする。
 // ファイルを更新したら VERSION を上げること。
-const VERSION = 'v14';
+const VERSION = 'v15';
 const CACHE = `dokusho-memo-${VERSION}`;
 const SHELL = [
   './',

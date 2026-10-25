@@ -3,7 +3,7 @@
 // index.html と版がずれたら（古いキャッシュが混ざったとき）一度だけ読み直す。
 // 画面の部品が見つからずに途中で止まり、ボタンが効かなくなるのを防ぐ。
 // sw.js の VERSION と index.html の app-version も一緒に上げること。
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 (() => {
   const meta = document.querySelector('meta[name="app-version"]');
   if (meta && meta.content === APP_VERSION) return;
@@ -74,6 +74,9 @@ function normalize(m) {
     page: String(m.page || '').trim(),
     memo: String(m.memo || ''),
     tags: parseTags(m.tags),
+    // AI 整形の状態と元の文。更新では送らないので、届いたときだけ持つ（手元の値を空で上書きしない）
+    ...(m.aiState !== undefined && { aiState: String(m.aiState) }),
+    ...(m.rawMemo !== undefined && { rawMemo: String(m.rawMemo) }),
   };
 }
 
@@ -154,7 +157,14 @@ function applyLocal(op) {
   else memos.push(memo);
 }
 
+// AI 要約は PC が書く。古い要約で上書きしないよう、画面からは送らない（サーバーのマージで残る）
+const PC_ONLY_BOOK_FIELDS = ['summary', 'summaryAt', 'summaryKey'];
+
 function enqueue(action, payload) {
+  if (action === 'saveBook') {
+    payload = { ...payload, book: { ...payload.book } };
+    PC_ONLY_BOOK_FIELDS.forEach((k) => delete payload.book[k]);
+  }
   const op = { action, payload };
   queue.push(op);
   applyLocal(op);
@@ -316,6 +326,8 @@ function memoHTML(m, { showBook = true, q = '' } = {}) {
       ${m.page ? `<span class="m-page">p.${esc(m.page)}</span>` : ''}
       <span>${esc(m.date)}</span>
       ${pending ? '<span class="pending">未送信</span>' : ''}
+      ${m.aiState === 'pending' ? '<span class="ai-mark">整形待ち</span>' : ''}
+      ${m.aiState === 'done' && m.rawMemo ? '<span class="ai-mark">AI 整形</span>' : ''}
     </div>
     ${m.memo ? `<div class="memo-body">${highlight(m.memo, q)}</div>` : ''}
     ${m.tags.length ? `<div class="memo-tags">${m.tags.map((t) => `<span>#${highlight(t, q)}</span>`).join('')}</div>` : ''}
@@ -460,6 +472,9 @@ function renderBook() {
   $('#bookRating').value = rating === null ? '' : rating;
   $('#bookRatingRange').value = rating === null ? 50 : rating;
   $('#bookRatingRange').classList.toggle('unset', rating === null);
+  $('#summaryField').hidden = !info.summary;
+  $('#summaryText').textContent = info.summary || '';
+  $('#summaryAt').textContent = info.summaryAt ? `（${String(info.summaryAt).slice(0, 10)} 作成）` : '';
   $('#removeBookBtn').hidden = !b || b.count > 0; // メモのある本は外さない（メモを消すと外せる）
 
   const list = memos.filter((m) => m.title === currentBook);
@@ -553,6 +568,7 @@ $('#addForm').addEventListener('submit', (e) => {
     memo: {
       id: uid(), createdAt: new Date().toISOString(),
       title, date, page, memo, tags: parseTags($('#fTags').value),
+      aiState: memo ? 'pending' : '', // PC の同期のときに AI が整える
     },
   });
   const info = bookInfo[title] || {};
@@ -1409,7 +1425,17 @@ document.querySelectorAll('.tabbar button').forEach((b) => b.addEventListener('c
 
 // ---------- 編集ダイアログ ----------
 let editingId = null;
+let reverting = false; // 「元の文に戻す」を押した（保存したときに AI 整形を取り消す）
 const editDialog = $('#editDialog');
+
+$('#revertBtn').addEventListener('click', () => {
+  const m = memos.find((x) => x.id === editingId);
+  if (!m || !m.rawMemo) return;
+  editForm.memo.value = m.rawMemo;
+  reverting = true;
+  $('#revertBtn').hidden = true;
+  toast('元の文に戻しました。保存すると確定します');
+});
 const editForm = $('#editForm');
 const deleteBtn = $('#deleteBtn');
 
@@ -1422,6 +1448,8 @@ function openEdit(id) {
   editForm.page.value = m.page;
   editForm.memo.value = m.memo;
   editForm.tags.value = m.tags.join(' ');
+  reverting = false;
+  $('#revertBtn').hidden = !m.rawMemo;
   deleteBtn.textContent = '削除';
   deleteBtn.dataset.armed = '';
   editDialog.showModal();
@@ -1433,10 +1461,13 @@ editForm.addEventListener('submit', (e) => {
   if (!m) { editDialog.close(); return; }
   const title = editForm.title.value.trim();
   if (!title) { toast('タイトルを入力してください'); return; }
+  // AI の状態と元の文は送らない（サーバーの値を残す）。「元の文に戻す」を押したときだけ送る
+  const { aiState, rawMemo, ...rest } = m;
   enqueue('update', {
     memo: {
-      ...m, title, date: editForm.date.value, page: editForm.page.value.trim(),
+      ...rest, title, date: editForm.date.value, page: editForm.page.value.trim(),
       memo: editForm.memo.value.trim(), tags: parseTags(editForm.tags.value),
+      ...(reverting && { rawMemo: '', aiState: 'reverted' }),
     },
   });
   // タイトルを直したら、本の情報（著者・表紙・読書の状態など）も新しいタイトルに引き継ぐ

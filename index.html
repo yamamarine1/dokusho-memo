@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="読書メモ">
-  <meta name="app-version" content="v14">
+  <meta name="app-version" content="v15">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" href="icons/icon-192.png">
@@ -149,6 +149,10 @@
           </div>
           <button type="button" id="clearRatingBtn" class="link-btn small-link">点数を消す</button>
         </div>
+        <div id="summaryField" class="field summary-field" hidden>
+          <span>AI 要約 <small id="summaryAt"></small></span>
+          <div id="summaryText" class="summary-text"></div>
+        </div>
         <button id="removeBookBtn" class="danger small" hidden>本棚から外す</button>
       </div>
 
@@ -191,6 +195,7 @@
         <label class="field"><span>ページ</span><input name="page" inputmode="numeric"></label>
       </div>
       <label class="field"><span>メモ</span><textarea name="memo" rows="7"></textarea></label>
+      <button type="button" id="revertBtn" class="link-btn small-link" hidden>AI が整える前の文に戻す</button>
       <label class="field"><span>タグ</span><input name="tags"></label>
       <div class="dialog-actions">
         <button type="button" id="deleteBtn" class="danger">削除</button>
