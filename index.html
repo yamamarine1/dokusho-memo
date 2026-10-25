@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="読書メモ">
-  <meta name="app-version" content="v13">
+  <meta name="app-version" content="v14">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" href="icons/icon-192.png">
@@ -102,6 +102,10 @@
       <div id="statusFilter" class="seg seg-wide"></div>
       <div class="shelf-bar">
         <span id="shelfCount" class="hint"></span>
+        <div id="doneSort" class="seg sort-toggle" hidden>
+          <button data-done-sort="date">読了日順</button>
+          <button data-done-sort="rating">点数順</button>
+        </div>
         <span class="spacer"></span>
         <div class="seg shelf-toggle">
           <button data-shelf="list" aria-label="リスト"><svg class="i"><use href="#i-list"/></svg></button>
@@ -136,6 +140,14 @@
         <div class="status-dates">
           <label id="startedField" class="field"><span>読み始めた日</span><input id="bookStarted" type="date"></label>
           <label id="finishedField" class="field"><span>読み終えた日</span><input id="bookFinished" type="date"></label>
+        </div>
+        <div id="ratingField" class="field">
+          <span>点数 <small id="ratingNone">（まだ付けていません）</small></span>
+          <div class="rating-row">
+            <input id="bookRatingRange" type="range" min="0" max="100" step="1" aria-label="点数">
+            <input id="bookRating" type="number" min="0" max="100" step="1" inputmode="numeric" class="rating-num" aria-label="点数（数字）"><span class="rating-unit">点</span>
+          </div>
+          <button type="button" id="clearRatingBtn" class="link-btn small-link">点数を消す</button>
         </div>
         <button id="removeBookBtn" class="danger small" hidden>本棚から外す</button>
       </div>
@@ -232,6 +244,24 @@
         <button type="button" id="sdCancel">キャンセル</button>
       </div>
     </div>
+  </dialog>
+
+  <!-- 点数を付ける（読了にしたとき、まだ点数がなければ開く） -->
+  <dialog id="ratingDialog">
+    <form id="ratingForm" class="form" method="dialog">
+      <h2>何点？</h2>
+      <p id="rdTitle" class="sd-title"></p>
+      <div class="rating-big"><span id="rdValue">70</span><small>点</small></div>
+      <div class="rating-row">
+        <input id="rdRange" type="range" min="0" max="100" step="1" value="70" aria-label="点数">
+        <input id="rdNum" type="number" min="0" max="100" step="1" inputmode="numeric" value="70" class="rating-num" aria-label="点数（数字）">
+      </div>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" id="rdLater">あとで</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- 設定 -->

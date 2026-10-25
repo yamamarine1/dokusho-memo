@@ -279,6 +279,23 @@ mark { background: #f3d37a; color: #2b2620; border-radius: 3px; padding: 0 1px; 
 .status-seg button.active[data-status="reading"] { color: var(--accent); }
 .status-seg button.active[data-status="done"] { color: var(--done); }
 .status-dates { display: flex; gap: 12px; }
+
+/* 点数（0〜100） */
+.rating-row { display: flex; align-items: center; gap: 10px; }
+.rating-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--done); padding: 0; }
+.rating-row input[type="range"].unset { opacity: .45; }
+.rating-num { width: 4.6em; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.rating-unit { font-size: 14px; color: var(--muted); }
+.rating-big { text-align: center; font-family: var(--serif); font-weight: 600; color: var(--done); line-height: 1; }
+.rating-big span { font-size: 52px; font-variant-numeric: tabular-nums; }
+.rating-big small { font-size: 18px; margin-left: 4px; }
+.small-link { font-size: 13px; color: var(--muted); align-self: flex-start; }
+.rating-badge {
+  display: inline-block; font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap;
+  padding: 4px 7px; border-radius: 999px; background: var(--done); color: var(--accent-ink);
+  font-variant-numeric: tabular-nums;
+}
+.gbook-cv .rating-badge { position: absolute; right: 6px; top: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
 .status-card .danger { align-self: flex-start; padding-left: 0; }
 
 .memo-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 10px; }

@@ -3,7 +3,7 @@
 // index.html と版がずれたら（古いキャッシュが混ざったとき）一度だけ読み直す。
 // 画面の部品が見つからずに途中で止まり、ボタンが効かなくなるのを防ぐ。
 // sw.js の VERSION と index.html の app-version も一緒に上げること。
-const APP_VERSION = 'v13';
+const APP_VERSION = 'v14';
 (() => {
   const meta = document.querySelector('meta[name="app-version"]');
   if (meta && meta.content === APP_VERSION) return;
@@ -31,6 +31,7 @@ let queue = LS.get('dm.queue', []);   // 未送信の操作 [{action, payload}]
 let bookInfo = LS.get('dm.books', {}); // タイトル → {isbn, author, publisher, pages, cover, pending, status, startedAt, finishedAt}
 let shelfMode = LS.get('dm.shelfMode', 'list'); // 本棚の表示：list / grid
 let shelfFilter = LS.get('dm.shelfFilter', 'all'); // 本棚の絞り込み：all / reading / want / done
+let doneSort = LS.get('dm.doneSort', 'date'); // 「読了」に絞ったときの並び：date（読了日順）/ rating（点数順）
 let pendingIsbn = '';                   // 検索で見つからなかった ISBN（次に保存する本に付ける）
 let flushing = false;
 let lastRefresh = 0;
@@ -255,6 +256,26 @@ function statusPick(title, status) {
     + `<span class="status-badge s-${STATUS[status] ? status : 'none'}">${STATUS[status] || 'ステータスを選ぶ'}<span class="caret">▾</span></span></button>`;
 }
 
+// 点数（0〜100）。空なら未評価で null。0 点も点数として扱う
+function ratingOf(title) {
+  const r = (bookInfo[title] || {}).rating;
+  if (r === undefined || r === null || String(r).trim() === '') return null;
+  const n = Number(r);
+  return Number.isFinite(n) ? n : null;
+}
+
+function ratingBadge(title) {
+  const r = ratingOf(title);
+  return r === null ? '' : `<span class="rating-badge">${r}点</span>`;
+}
+
+// 入力欄の値を 0〜100 の整数にそろえる（空や数字でなければ null）
+function clampRating(v) {
+  if (String(v).trim() === '') return null;
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : null;
+}
+
 // 総ページ数が分かっていれば、メモした最大ページから読書位置（%）を出す
 function progress(b) {
   const total = parseInt((bookInfo[b.title] || {}).pages, 10);
@@ -342,9 +363,15 @@ const SHELF_EMPTY = {
 };
 
 // 本棚の並び：読書中 → 読む予定 → 読了。読了は読み終えた日の新しい順、ほかは最後に触った順
+// 「読了」に絞って点数順を選んだときは、点数の高い順（未評価は最後）
 function shelfSort(a, b) {
   const rank = { reading: 0, want: 1, done: 2, '': 3 };
   const key = (x) => (x.status === 'done' ? (bookInfo[x.title] || {}).finishedAt || x.lastDate : x.last);
+  if (shelfFilter === 'done' && doneSort === 'rating') {
+    const ra = ratingOf(a.title); const rb = ratingOf(b.title);
+    const byRating = (rb === null ? -1 : rb) - (ra === null ? -1 : ra);
+    if (byRating) return byRating;
+  }
   return rank[a.status] - rank[b.status] || (key(a) < key(b) ? 1 : -1);
 }
 
@@ -358,6 +385,9 @@ function renderShelf() {
 
   const bs = all.filter((b) => shelfFilter === 'all' || b.status === shelfFilter).sort(shelfSort);
   $('#shelfCount').textContent = bs.length ? `${bs.length}冊` : '';
+  $('#doneSort').hidden = shelfFilter !== 'done' || bs.length < 2;
+  document.querySelectorAll('#doneSort button')
+    .forEach((btn) => btn.classList.toggle('active', btn.dataset.doneSort === doneSort));
   const list = $('#shelfList');
   document.querySelectorAll('.shelf-toggle button')
     .forEach((btn) => btn.classList.toggle('active', btn.dataset.shelf === shelfMode));
@@ -374,6 +404,7 @@ function renderShelf() {
           ${coverImg(b.title, 'gbook-cover')
             || `<div class="gbook-cover gbook-blank" style="background:${spineColor(b.title)}">${esc(b.title)}</div>`}
           ${statusPick(b.title, b.status)}
+          ${b.status === 'done' ? ratingBadge(b.title) : ''}
         </div>
         <div class="gbook-title">${esc(b.title)}</div>
         ${b.status === 'reading' ? progressHTML(progress(b)) : ''}
@@ -393,7 +424,7 @@ function renderShelf() {
         ${coverImg(b.title, 'book-cover') || `<span class="book-spine" style="background:${spineColor(b.title)}"></span>`}
         <div class="book-info">
           <div class="book-title">${esc(b.title)}</div>
-          <div class="book-sub">${statusPick(b.title, b.status)}<span>${sub}</span></div>
+          <div class="book-sub">${statusPick(b.title, b.status)}${b.status === 'done' ? ratingBadge(b.title) : ''}<span>${sub}</span></div>
           ${b.status === 'reading' ? progressHTML(pct) : ''}
         </div>
         <span class="book-count">${b.count ? `${b.count}件` : ''}</span>
@@ -422,6 +453,13 @@ function renderBook() {
   $('#startedField').hidden = status !== 'reading' && status !== 'done';
   $('#finishedField').hidden = status !== 'done';
   $('.status-dates').hidden = $('#startedField').hidden;
+  const rating = ratingOf(currentBook);
+  $('#ratingField').hidden = status !== 'done';
+  $('#ratingNone').hidden = rating !== null;
+  $('#clearRatingBtn').hidden = rating === null;
+  $('#bookRating').value = rating === null ? '' : rating;
+  $('#bookRatingRange').value = rating === null ? 50 : rating;
+  $('#bookRatingRange').classList.toggle('unset', rating === null);
   $('#removeBookBtn').hidden = !b || b.count > 0; // メモのある本は外さない（メモを消すと外せる）
 
   const list = memos.filter((m) => m.title === currentBook);
@@ -551,6 +589,7 @@ $('#fStatus').addEventListener('click', (e) => {
   LS.set('dm.lastTitle', title);
   renderAddView();
   toast(`『${title}』を「${STATUS[btn.dataset.status]}」で本棚に入れました`);
+  askRatingIfDone(title, btn.dataset.status);
 });
 
 $('#recentBooks').addEventListener('click', (e) => {
@@ -1164,6 +1203,72 @@ $('#bookStatus').addEventListener('click', (e) => {
   if (!btn || !currentBook) return;
   saveBookPatch(currentBook, statusPatch(currentBook, btn.dataset.status));
   toast(`「${STATUS[btn.dataset.status]}」にしました`);
+  askRatingIfDone(currentBook, btn.dataset.status);
+});
+
+// 点数（本の詳細）。スライダーは動かしている間は数字だけ変え、離したときに保存する
+$('#bookRatingRange').addEventListener('input', (e) => {
+  $('#bookRating').value = e.target.value;
+  e.target.classList.remove('unset');
+});
+$('#bookRatingRange').addEventListener('change', (e) => saveRating(currentBook, e.target.value));
+$('#bookRating').addEventListener('change', (e) => {
+  const r = clampRating(e.target.value);
+  if (r === null) { renderBook(); return; } // 空にしたときは元に戻す（消すのは「点数を消す」で）
+  saveRating(currentBook, r);
+});
+$('#clearRatingBtn').addEventListener('click', () => {
+  saveBookPatch(currentBook, { rating: '' });
+  toast('点数を消しました');
+});
+
+function saveRating(title, value) {
+  const r = clampRating(value);
+  if (!title || r === null || r === ratingOf(title)) return;
+  saveBookPatch(title, { rating: String(r) }); // 0 点が空と見なされないよう文字列で送る
+}
+
+// ---------- 点数を付ける（読了にしたとき） ----------
+const ratingDialog = $('#ratingDialog');
+let rateTitle = '';
+
+function askRatingIfDone(title, status) {
+  if (status !== 'done' || ratingOf(title) !== null) return;
+  rateTitle = title;
+  $('#rdTitle').textContent = title;
+  setDialogRating(70);
+  ratingDialog.showModal();
+}
+
+function setDialogRating(v) {
+  $('#rdRange').value = v;
+  $('#rdNum').value = v;
+  $('#rdValue').textContent = v;
+}
+
+$('#rdRange').addEventListener('input', (e) => setDialogRating(e.target.value));
+$('#rdNum').addEventListener('input', (e) => {
+  const r = clampRating(e.target.value);
+  if (r === null) return;
+  $('#rdRange').value = r;
+  $('#rdValue').textContent = r;
+});
+$('#rdLater').addEventListener('click', () => ratingDialog.close());
+$('#ratingForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const r = clampRating($('#rdNum').value);
+  if (r === null) { toast('0〜100 の数字を入れてください'); return; }
+  saveRating(rateTitle, r);
+  ratingDialog.close();
+  toast(`『${rateTitle}』を ${r} 点にしました`);
+});
+
+$('#doneSort').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-done-sort]');
+  if (!btn) return;
+  doneSort = btn.dataset.doneSort;
+  LS.set('dm.doneSort', doneSort);
+  renderShelf();
 });
 $('#bookStarted').addEventListener('change', (e) => saveBookPatch(currentBook, { startedAt: e.target.value }));
 $('#bookFinished').addEventListener('change', (e) => saveBookPatch(currentBook, { finishedAt: e.target.value }));
@@ -1237,6 +1342,7 @@ $('#addBookForm').addEventListener('submit', (e) => {
   saveBookPatch(title, { ...filled, ...statusPatch(title, abStatus) });
   addBookDialog.close();
   toast(`『${title}』を「${STATUS[abStatus]}」に追加しました`);
+  askRatingIfDone(title, abStatus);
 });
 
 // ---------- 一覧のタップ → 編集 ----------
@@ -1267,6 +1373,7 @@ $('#sdOptions').addEventListener('click', (e) => {
   saveBookPatch(pickTitle, statusPatch(pickTitle, btn.dataset.status));
   statusDialog.close();
   toast(`『${pickTitle}』を「${STATUS[btn.dataset.status]}」にしました`);
+  askRatingIfDone(pickTitle, btn.dataset.status);
 });
 $('#sdCancel').addEventListener('click', () => statusDialog.close());
 
